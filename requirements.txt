@@ -1,0 +1,31 @@
+# ── Core (already available locally) ──────────────────────────────────
+numpy
+opencv-python          # video I/O, classical features (SIFT/ORB), homography
+scipy
+scikit-image
+Pillow
+matplotlib
+
+# ── Config / utils ────────────────────────────────────────────────────
+PyYAML                 # config.yaml loading
+requests               # fetching satellite tiles over HTTP (WMS/WMTS)
+tqdm                   # progress bars for batch frame processing
+
+# ── Deep matchers (install upfront; CPU build is fine, no CUDA locally) ─
+# torch / torchvision: install the CPU wheel explicitly, e.g.
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+kornia                 # LoFTR + feature utilities (pure-Python, weights auto-download)
+# SuperGlue/SuperPoint: vendored via kornia.feature.* or the original repo (see docs).
+
+# ── Reference imagery providers ───────────────────────────────────────
+# Google Earth Engine (primary per brief). Requires a Google account + auth.
+earthengine-api
+geemap                 # convenient GEE export/visualisation helpers
+# IGN BD ORTHO (sanctioned open-data fallback) uses plain WMS over `requests` —
+# no extra dependency required.
+
+# ── Optional GIS niceties (core geo math is implemented without these) ─
+# pyproj               # CRS transforms (we do web-mercator math manually in geo.py)
+# rasterio             # GeoTIFF read/write if we want georeferenced rasters

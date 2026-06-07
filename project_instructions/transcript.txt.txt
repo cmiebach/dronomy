@@ -1,0 +1,37 @@
+Meeting notes (June 2, 2026)
+
+The Problem & Dataset
+* We are given a video recorded from a drone using a bottom-looking camera
+* The video filename contains the exact GPS coordinates of where it was recorded
+* The drone captures a landscape (buildings, grass, parks, etc.) and the goal is to match that to the equivalent view in Google Earth satellite imagery
+* Key challenge: the drone image and satellite image may differ in resolution, angle, season, and lighting — but there is enough visual similarity to identify the same location
+* This process is called image registration / image matching
+
+The Technical Approach
+Classical approach:
+* Extract features from both images independently and minimize a cost function between them
+* SIFT (Scale-Invariant Feature Transform) is the classic algorithm — it compensates for differences in scale, rotation, and perspective between the two images
+Modern approach:
+* Deep learning-based matchers (e.g. SuperGlue, LoFTR) — compare old vs. new approaches
+* You are free to choose whichever approach you think is best — but try to compare at least two so you have a justification if asked
+On using the video:
+* Start by treating each frame independently — don't worry about temporal relationships between frames for now
+* OpenCV is the recommended library for reading video and extracting frames (while loop / for loop, frame by frame)
+* If the temporal relationship between frames becomes relevant later, that can be explored as an extension
+* The bonus track (visual odometry + fusion) is extra
+
+Flexibility & Fallbacks
+* If matching drone footage to Google Earth proves too challenging, Adrian said you can explore open satellite data accessible via APIs as an alternative reference image source
+* Real-time performance is not a requirement — if the algorithm is robust enough, processing speed can be handled separately via better hardware or cloud offloading
+* If the provided video is too challenging for the matching problem, Adrian can share an easier video
+
+Suggested Workflow
+1. Literature review — survey image registration / matching algorithms, understand how they work and how they compare
+2. Understand the data — explore the drone video, check metadata for any embedded coordinates or altitude info (altitude data is not guaranteed but worth checking)
+3. Google Earth API access — figure out how to pull satellite imagery programmatically (everything should be Pythonic)
+4. Prototype — start with existing examples and implementations, then fine-tune from there. Fail fast, iterate
+5. For Monday: try to have small working pieces ready — e.g. "this is how we connect to Google Earth", "this is how we read frames from the video" — doesn't need to be integrated yet
+
+Logistics & Deliverables
+* Lock in a separate meeting with Adrian (the Dronomy CEO) as soon as possible — he will likely be involved in grading the final presentation, so understanding exactly what he expects is important. Hind doesn't need to be present for that call
+* Deliverables will include code (GitHub), a written report, and a presentation — report and presentation structure to be discussed closer to the deadline

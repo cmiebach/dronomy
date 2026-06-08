@@ -1,0 +1,45 @@
+# Keep the build context small — mirror .gitignore. Data, video, and secrets
+# are mounted at runtime, never sent to the Docker daemon or baked in.
+
+# Large binary assets / video
+dronomy_video/
+*.MP4
+*.mp4
+*.mov
+*.MOV
+*.tif
+*.tiff
+
+# Generated data
+data/frames/
+data/reference/
+data/outputs/
+data/cache/
+
+# Secrets
+.env
+*.key
+service-account*.json
+credentials.json
+
+# Python / build cruft
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# Git / IDE / OS / docs we don't need at build time
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+notebooks/
+docs/
+project_instructions/

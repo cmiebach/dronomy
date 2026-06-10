@@ -71,6 +71,10 @@ Goal: reproduce his numbers on identical inputs so every later delta is real.
   this segment is the anchor for everything in §3.
 - Exit criterion: our SIFT and LoFTR means within noise of 56.8 m / 70.0 m on
   the same frames. If they aren't, the pipelines differ — fix before exceeding.
+- **MET 2026-06-10** (see ACCURACY_LOG.md): SIFT 55.3 m (his 56.8), LoFTR
+  67.7 m (his 70.0), frame 6510 locked at 1.76 m (his 1.73). The
+  telemetry-informed single-scale grid gives the identical lock outcome
+  1.8× faster.
 
 ---
 

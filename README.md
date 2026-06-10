@@ -38,9 +38,11 @@ src/dronomy_loc/
                deep.py       LoFTR via kornia (deep matcher)
   localize/    pipeline.py   Homography → (lat, lon, yaw, scale)
                search.py     Grid-of-centres × multi-scale search + ≥20-inlier lock gate
+               validate.py   Multi-frame validation harness vs the GPS track
+               odometry.py   VO dead-reckoning: chain homographies from anchor frames
   viz/         overlay.py    Match overlays, footprint, trajectory plot
-scripts/       01..06        Runnable "small working pieces" (see below)
-tests/         test_*.py     Offline tests: geo math, ingest, telemetry, providers, search
+scripts/       01..08        Runnable "small working pieces" (see below)
+tests/         test_*.py     56 offline tests: geo, ingest, telemetry, providers, search, validate, VO
 docs/                        Literature review + report outline
 data/                        Generated artifacts (git-ignored)
 ```
@@ -75,6 +77,12 @@ python scripts/05_ingest_video.py            # re-run resumes; --verify checks i
 
 # 6) Extract the per-frame GPS track (GROUND TRUTH for scoring only; needs exiftool)
 python scripts/06_extract_gps_track.py
+
+# 7) Validate N frames against the GPS track → error distribution + CSV
+python scripts/07_validate.py --frames 342,3083,6510 --method loftr --provider pnoa
+
+# 8) Full-trajectory VO dead-reckoning anchored on locked frames → drift curve CSV
+python scripts/08_vo_trajectory.py --provider pnoa --anchors 6400,6500,6600
 ```
 
 Run tests: `pytest` (all offline — synthetic videos, mocked network; no torch needed).
@@ -97,9 +105,14 @@ Run tests: `pytest` (all offline — synthetic videos, mocked network; no torch 
 - [x] First real single-frame localization (SIFT, grid search): locked on bench frame 6510,
       90.7 m — reproduces the known SIFT baseline/failure-mode on that frame
 - [x] Telemetry diagnosis: gimbal nadir all flight, alt ~50 m const (see PLAN.md §0)
-- [ ] LoFTR path (install torch/kornia) + matcher comparison on the 3-frame bench
-- [ ] Validation harness over the GPS track + our ACCURACY_LOG.md
-- [ ] VO dead-reckoning anchored on the matchable segment (PLAN.md §3a)
+- [x] LoFTR bench reproduces caspar's numbers: SIFT 55.3 m (his 56.8), LoFTR 67.7 m
+      (his 70.0); frame 6510 locks at **1.76 m** (see ACCURACY_LOG.md)
+- [x] Single-scale grid (telemetry-informed): same lock outcome, 1.8× faster
+- [x] Validation harness (scripts/07) + ACCURACY_LOG.md
+- [x] VO dead-reckoning full-trajectory run (scripts/08): **100% coverage**
+      (median 12.3 m, 1.6 m near anchors) vs the ~6% per-frame-matching ceiling
+- [ ] Densify anchors; appearance-gap experiments (PLAN.md §3b); 35-stop scan
 - [ ] Report + presentation; lock meeting with Adrian
 
-See `PLAN.md` for the full roadmap and `docs/` for the literature review.
+See `PLAN.md` (roadmap), `ACCURACY_LOG.md` (measured results), and
+`explained-dronomy.md` (full walkthrough of what/why/how).

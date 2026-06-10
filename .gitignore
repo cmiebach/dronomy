@@ -12,6 +12,7 @@ project_instructions/_extracted.txt
 project_instructions/_sample_*.jpg
 
 # ── Generated data (frames, shards, fetched tiles, outputs) ───────────
+data/bench/
 data/frames/
 data/ingest/
 data/reference/

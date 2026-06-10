@@ -11,6 +11,7 @@ Layer: OI.OrthoimageCoverage  (PNOA maximum-actuality orthoimagery)
 from __future__ import annotations
 
 import io
+import time
 
 import numpy as np
 import requests
@@ -48,7 +49,14 @@ class PNOAProvider(ReferenceProvider):
             "FORMAT": self.image_format,
             "TRANSPARENT": "false",
         }
-        resp = requests.get(self.wms_url, params=params, timeout=self.timeout)
+        # The WMS occasionally answers a transient 502/503 (observed live) —
+        # retry the same way EsriProvider does before giving up.
+        for attempt in range(3):
+            resp = requests.get(self.wms_url, params=params, timeout=self.timeout)
+            if resp.status_code < 500:
+                break
+            if attempt < 2:
+                time.sleep(1.0 * (1.5 ** attempt))
         resp.raise_for_status()
         ctype = resp.headers.get("Content-Type", "")
         if "image" not in ctype:

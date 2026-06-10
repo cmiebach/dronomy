@@ -34,6 +34,11 @@ reference:
   # Ground footprint of the reference tile to fetch, centred on the rough location.
   span_meters: 1500         # 1.5 km x 1.5 km area
   pixels: 4096              # output raster size (square); ~0.37 m/px at 1500 m span
+  # One-world-tile optimization (scripts/07/08): the whole flight stays within
+  # ~109 m of the prior, so one tile covers every search candidate; candidates
+  # are cropped locally from it (zero per-candidate network calls).
+  world_span_m: 600.0
+  world_pixels: 4096
   # Esri World Imagery (keyless ArcGIS REST export; sporadic 5xx handled by retry):
   esri:
     export_url: "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
@@ -90,3 +95,5 @@ output:
   dir: "data/outputs"
   save_overlays: true
   trajectory_csv: "data/outputs/trajectory.csv"
+  validation_csv: "data/outputs/validation.csv"
+  vo_trajectory_csv: "data/outputs/vo_trajectory.csv"

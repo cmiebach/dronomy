@@ -55,7 +55,9 @@ def pose_from_homography(H: np.ndarray, frame_shape, ref: GeoImage) -> PoseEstim
     rpx_r, rpy_r = _apply_H(H, cx + 1.0, cy)
     ref_px_per_frame_px = math.hypot(rpx_r - rpx, rpy_r - rpy)
     mpp_x, _ = ref.meters_per_pixel
-    ground_m_per_px = ref_px_per_frame_px * mpp_x
+    # meters_per_pixel is projected EPSG:3857 metres, inflated by 1/cos(lat)
+    # vs true ground metres — correct it so the field really is GROUND m/px.
+    ground_m_per_px = ref_px_per_frame_px * mpp_x * math.cos(math.radians(lat))
 
     return PoseEstimate(
         ok=True, lat=lat, lon=lon, yaw_deg=yaw, ground_m_per_px=ground_m_per_px,

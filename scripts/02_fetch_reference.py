@@ -15,7 +15,8 @@ from dronomy_loc.reference import get_provider, save_reference
 def main():
     cfg = load_config()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--provider", default=cfg.reference.provider, choices=["ign", "gee"])
+    ap.add_argument("--provider", default=cfg.reference.provider,
+                    choices=["esri", "pnoa", "gee", "ign"])
     ap.add_argument("--lat", type=float, default=cfg.video.rough_lat)
     ap.add_argument("--lon", type=float, default=cfg.video.rough_lon)
     ap.add_argument("--span", type=float, default=cfg.reference.span_meters)

@@ -23,12 +23,20 @@ class ReferenceProvider(abc.ABC):
 
 
 def get_provider(name: str, cfg=None) -> ReferenceProvider:
-    """Factory: 'ign' | 'gee'. `cfg` is the loaded config namespace (optional)."""
+    """Factory: 'esri' | 'pnoa' | 'gee' | 'ign'. `cfg` is the loaded config
+    namespace (optional)."""
     name = name.lower()
+    if name == "esri":
+        from .esri import EsriProvider
+        return EsriProvider(cfg)
+    if name == "pnoa":
+        from .pnoa import PNOAProvider
+        return PNOAProvider(cfg)
     if name == "ign":
         from .ign import IGNProvider
         return IGNProvider(cfg)
     if name in ("gee", "earthengine", "googleearth"):
         from .gee import GEEProvider
         return GEEProvider(cfg)
-    raise ValueError(f"Unknown reference provider: {name!r} (expected 'ign' or 'gee')")
+    raise ValueError(
+        f"Unknown reference provider: {name!r} (expected 'esri', 'pnoa', 'gee' or 'ign')")

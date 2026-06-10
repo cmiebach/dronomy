@@ -11,15 +11,19 @@ project_instructions/*.pptx
 project_instructions/_extracted.txt
 project_instructions/_sample_*.jpg
 
-# ── Generated data (frames, fetched tiles, outputs) ───────────────────
+# ── Generated data (frames, shards, fetched tiles, outputs) ───────────
 data/frames/
+data/ingest/
 data/reference/
 data/outputs/
 data/cache/
+data/*.json
+data/*.csv
 *.tif
 *.tiff
 
 # ── Python ────────────────────────────────────────────────────────────
+.pytest_cache/
 __pycache__/
 *.py[cod]
 *.egg-info/

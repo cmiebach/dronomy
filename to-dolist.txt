@@ -1,7 +1,13 @@
 ================================================================
  DRONOMY — TO-DO LIST (things only you can do)
- Updated: 2026-06-08
+ Updated: 2026-06-10
 ================================================================
+
+NOTE 2026-06-10: GEE auth (section 1) is NO LONGER BLOCKING — the new
+keyless providers work today: 'esri' (global, default) and 'pnoa'
+(Spanish IGN, ~0.15 m/px over the flight area, best accuracy). Both
+verified live. GEE remains optional (the brief names Google Earth, so
+authenticating it is still worth doing for the report).
 
 Legend:  [ ] todo   [~] optional   [!] decision needed
 
@@ -83,14 +89,18 @@ with Earth Engine access and a Cloud project. One-time setup:
            - lower reference.pixels to ~512-1024 (honest for Sentinel-2), or
            - switch to a sub-meter source if matching is weak (see 3.2).
 
-[!] 3.2  Sub-meter fallback imagery. If GEE/Sentinel-2 is too coarse to match the
-         drone frames, port the Esri World Imagery provider (keyless, global,
-         sub-meter) from teammate Caspar's branch `caspar-refactor`
-         (src/dronomy/satellite.py, fetch_esri). Already pulled locally.
+[x] 3.2  Sub-meter imagery: DONE 2026-06-10 — Esri AND Spanish PNOA providers
+         implemented natively (reference/esri.py, reference/pnoa.py), both
+         keyless, both verified live against the flight area.
 
 [~] 3.3  Matcher fallback. Wire SIFT (classical) as an automatic fallback inside
          localize() when the deep matcher returns too few RANSAC inliers. SIFT
          impl also available on `caspar-refactor` (matching/sift.py).
+
+[ ] 3.4  Install torch+kornia (CPU) to unlock the LoFTR matcher — the measured
+         fix for the degenerate-SIFT failure on frame 6510 (caspar: 1.7 m there):
+           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+           pip install kornia
 
 ----------------------------------------------------------------
 4. DONE (no action needed — recorded here for context)
@@ -100,3 +110,8 @@ with Earth Engine access and a Cloud project. One-time setup:
 [x] GEE map-tiles reference provider implemented (gee.py); provider switched to "gee".
 [x] earthengine-api installed locally; tile geometry verified offline.
 [x] Dockerfile + docker-compose.yml + .dockerignore created (this file's section 2).
+[x] 2026-06-10: exiftool installed (winget); GPS ground truth extracted (6853 fixes,
+    data/gps_track.csv — matches caspar's GT exactly; scoring only, never an input).
+[x] 2026-06-10: full video ingested (8 shards, 229 blur-filtered frames, verified).
+[x] 2026-06-10: first real localization locked (SIFT grid search, frame 6510, 90.7 m
+    = the documented SIFT baseline). Next accuracy lever = LoFTR (3.4).

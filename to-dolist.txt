@@ -1,7 +1,24 @@
 ================================================================
  DRONOMY — TO-DO LIST (things only you can do)
- Updated: 2026-06-10
+ Updated: 2026-06-11
 ================================================================
+
+----------------------------------------------------------------
+0. FROM ADRIAN'S EMAIL (2026-06-10) — do these first
+----------------------------------------------------------------
+[ ] 0.1  Save the email attachments into the project:
+         - the SRT telemetry file  -> project_instructions/ (dev-only input)
+         - the GPS ground-truth file -> project_instructions/
+         Then run the cross-check vs our extracted track (ask Claude:
+         "cross-check Adrian's GT file against data/gps_track.csv").
+[ ] 0.2  Watch for the camera-calibration email (intrinsics). When it
+         arrives, drop the numbers into config (a camera: section will be
+         added) for the undistortion pass.
+[~] 0.3  Google Earth desktop: manually export one image of the flight area
+         (File > Save Image at max resolution, note the view bounds or save
+         a KML) -> data/google_earth/. Needed only for the one
+         brief-compliance run in the report.
+
 
 NOTE 2026-06-10: GEE auth (section 1) is NO LONGER BLOCKING — the new
 keyless providers work today: 'esri' (global, default) and 'pnoa'

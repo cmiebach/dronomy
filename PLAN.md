@@ -176,18 +176,61 @@ Share:
 
 ---
 
-## 6. Open decisions for the professor
+## 6. Open decisions for the professor — ANSWERED (Adrian, 2026-06-10 email)
 
-1. **Telemetry purity.** Is *any* non-GPS telemetry (altitude band, yaw
-   prior) usable as a localizer input, or is all telemetry off-limits like
-   GPS? Less urgent now that §0.1 killed the rectification use-case, but the
-   answer still decides whether the single-scale speedup may use the known
-   50 m altitude or must self-calibrate from a locked match (we implement
-   self-calibration regardless — it is telemetry-free).
-2. **Grading scope on coverage.** Is "sub-2 m where geometry permits, ~6 %
-   matchable, VO-degraded estimates elsewhere" an acceptable result on this
-   oblique flight, or is per-frame independent localization required?
-3. **Report framing.** Which is the graded number: best-case precision on
-   matchable frames, mean over a fixed bench, or full-trajectory RMSE?
-   (Also: GT itself is consumer GPS, ~1–3 m — claims below that are
-   unprovable without RTK; we will frame accordingly.)
+1. **Telemetry purity → settled.** "The only live input will be the image
+   data." The SRT/telemetry may be used to BUILD (dev-time diagnosis, GT)
+   but will not exist at runtime — exactly our design (self-calibrating
+   scale, GT-only track). No change needed.
+2. **Required output → position only; heading is a plus.** We already emit
+   yaw — the plus is secured; quantify yaw error to claim it.
+3. **THE GRADING METRIC → shape precision, not absolute accuracy.**
+   Verbatim: "Precision is more important than accuracy: we want a
+   trajectory that looks similar in shape and dimensions to the original
+   path, even if it is off the ground truth path by a few meters."
+   This is what VO dead-reckoning produces by construction — drift shows up
+   mostly as a slowly-varying offset/rotation, while local shape is
+   preserved. Our evaluation must add the standard metric for exactly this:
+   **ATE after rigid SE(2) alignment** (Umeyama, NO scale correction —
+   "dimensions" must match unaligned), plus path-length ratio, plus the
+   estimated-vs-GT overlay plot on the orthophoto (the artifact he will
+   actually look at).
+4. **Satellite source → settled.** One map is enough; manual download via
+   the Google Earth desktop app is sanctioned. Our automated keyless fetch
+   (Esri/PNOA) exceeds the requirement; do ONE compliance run with a
+   manually exported Google Earth image for the report.
+5. **VO fusion → officially the bonus.** Already working (100 % coverage).
+6. **Incoming from Adrian:** camera intrinsics (focal/FOV, sensor size) and
+   an official GT file + SRT (email attachments). Cross-check his GT against
+   our extracted track (expect ~0 m: same source), and use intrinsics for an
+   undistortion pass / metric-scale sanity check when they arrive.
+
+---
+
+## 7. Finishing plan (post-answers)
+
+Ordered; each step lands with a measured row or an artifact.
+
+1. **Shape-precision evaluation** (the graded metric — highest priority):
+   `localize/trajectory.py` with `align_se2(est, gt)` (Umeyama w/o scale),
+   `ate(est, gt)` raw + aligned, path-length ratio; extend scripts/08 output
+   and add `scripts/09_trajectory_report.py` → overlay plot (est vs GT on
+   the PNOA world tile) + metrics block. Offline tests with synthetic
+   trajectories (known offset/rotation recovered exactly).
+2. **Densify anchors** along the flight (stride the LoFTR keyframe search,
+   accept locks ≥20 inliers) → flattens the 51+-hop drift tail; re-run 08;
+   new ACCURACY_LOG row (aligned-ATE before/after).
+3. **Adrian's attachments**: save SRT + official GT under
+   `project_instructions/` (gitignored if large), cross-check vs
+   `data/gps_track.csv`, note the delta in ACCURACY_LOG.
+4. **Heading bonus**: yaw error vs track bearing (GT-only) on locked frames
+   + VO frames; one log row.
+5. **Google Earth compliance run**: manual desktop export of the area,
+   georeference (corner coords from the export/KML), run the bench against
+   it, one log row + a paragraph for the report ("brief-compliant source").
+6. **Camera intrinsics** (when they arrive): undistort frames in ingest
+   (optional flag), re-run bench — expect a small accuracy gain; log row.
+7. **Report + presentation**: structure already written in
+   `explained-dronomy.md`; lead with the overlay plot and aligned-ATE,
+   then per-frame metre-level locks, then the coverage story (6 % → 100 %).
+   Align the joint story with caspar's branch (shared bench + log format).

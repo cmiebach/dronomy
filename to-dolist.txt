@@ -114,10 +114,23 @@ with Earth Engine access and a Cloud project. One-time setup:
          localize() when the deep matcher returns too few RANSAC inliers. SIFT
          impl also available on `caspar-refactor` (matching/sift.py).
 
-[ ] 3.4  Install torch+kornia (CPU) to unlock the LoFTR matcher — the measured
-         fix for the degenerate-SIFT failure on frame 6510 (caspar: 1.7 m there):
-           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-           pip install kornia
+[x] 3.4  torch+kornia (CPU) installed; LoFTR working. Frame 6510 locks at 1.76 m.
+
+[ ] 3.5  MatchAnything (cross-modal; the lever for the ~6% coverage ceiling) is
+         CODE-WIRED (matching/matchanything.py; --method matchanything). To RUN
+         it needs the real zju3dv weights, which are NOT in pip imcui. Two paths:
+           (a) reuse Caspar's image: docker/Dockerfile.matchanything on his
+               branch clones the HF Space + downloads weights via gdown. Port it
+               to our repo (our package is dronomy_loc, his is dronomy) OR run
+               our code mounted into his image.
+           (b) make a Python 3.10-3.12 venv, clone the zju3dv fork
+               (huggingface.co/spaces/LittleFrog/MatchAnything), pip install -e
+               it + 'spaces', fetch weights.zip -> imcui/third_party/
+               MatchAnything/weights/. Then: set IMCUI_CONFIG if needed and run
+               scripts/07 --method matchanything.
+         Do NOT pip install imcui into the main conda env: it pins numpy<2.3 and
+         would break the working stack. Validate via the 35-stop matchability
+         scan: does coverage rise above 6%?
 
 ----------------------------------------------------------------
 4. DONE (no action needed — recorded here for context)

@@ -75,6 +75,12 @@ matching:
     model: "loftr"          # kornia LoFTR
     weights: "outdoor"      # LoFTR pretrained variant
     device: "cpu"           # no local CUDA; switch to "cuda" on better hardware
+  # MatchAnything (cross-modality; targets the appearance gap / coverage ceiling).
+  # Real weights ship only in zju3dv's imcui fork -> run in docker/Dockerfile.matchanything.
+  matchanything:
+    model: "eloftr"         # eloftr | roma  (roma = stronger, much slower on CPU)
+    device: "cpu"
+    max_long_edge: 832
   ransac:
     reproj_threshold_px: 5.0
     confidence: 0.999

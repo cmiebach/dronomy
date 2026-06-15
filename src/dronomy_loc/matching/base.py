@@ -57,7 +57,7 @@ class Matcher(abc.ABC):
 
 
 def get_matcher(method: str, cfg=None) -> "Matcher":
-    """Factory: 'classical' | 'loftr' | 'superglue'."""
+    """Factory: 'classical' | 'loftr' | 'matchanything'."""
     method = method.lower()
     if method in ("classical", "sift", "orb", "akaze"):
         from .classical import ClassicalMatcher
@@ -65,4 +65,7 @@ def get_matcher(method: str, cfg=None) -> "Matcher":
     if method in ("loftr", "deep", "superglue"):
         from .deep import DeepMatcher
         return DeepMatcher(cfg, model=method)
+    if method in ("matchanything", "ma"):
+        from .matchanything import MatchAnythingMatcher
+        return MatchAnythingMatcher(cfg)
     raise ValueError(f"Unknown matcher: {method!r}")

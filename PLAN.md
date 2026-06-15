@@ -103,9 +103,13 @@ Goal: reproduce his numbers on identical inputs so every later delta is real.
   *appearance* problem: vegetation-heavy low-texture ground, season/lighting
   gap vs the orthophoto date, and motion blur. Different problem, different
   fixes:
-- **Cross-modal matchers**: MatchAnything (his Docker image exists — reuse),
-  RoMa/DKM dense matchers; built for exactly this domain gap. Measure on the
-  35-stop protocol: does the matchable fraction rise above 6 %?
+- **Cross-modal matchers**: MatchAnything — **now wired as a first-class
+  matcher** (`matching/matchanything.py`, `get_matcher("matchanything")`),
+  so `--method matchanything` works in scripts 07/08/09 unchanged. Built for
+  exactly this domain gap. Real weights run in the dedicated env (Caspar's
+  `docker/Dockerfile.matchanything`, zju3dv fork). **Win condition:** the
+  matchable fraction rises above 6 % on the 35-stop protocol — measure it.
+  Also worth a look: RoMa/DKM dense matchers (imcui exposes them too).
 - **Reference-date selection**: PNOA WMS exposes multiple coverages/years;
   pick the date closest in season to the flight. Cheap to test — one config
   change per date, scored on the same bench.

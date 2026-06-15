@@ -4,23 +4,29 @@ Localizes a set of frames from the single coarse prior and scores the error
 distribution against the telemetry track (ground truth ONLY — never an input).
 
 Usage:
-    python scripts/07_validate.py                          # 12 frames evenly spread
-    python scripts/07_validate.py --frames 342,3083,6510   # explicit frames
+    python scripts/07_validate.py --frames 6510              # the single frame 6510
+    python scripts/07_validate.py --frames 342,3083,6510     # those explicit frames
+    python scripts/07_validate.py --spread 12                # 12 frames evenly spread
     python scripts/07_validate.py --method loftr --provider pnoa
 """
 import argparse
+import sys
+import time
 
 import _bootstrap  # noqa: F401
 from dronomy_loc.config import load_config, resolve
 from dronomy_loc.data import frames as frames_mod
 from dronomy_loc.data.telemetry import load_track_csv
-from dronomy_loc.localize.search import TileCache
+from dronomy_loc.localize.search import TileCache, grid_centers
 from dronomy_loc.localize.validate import (
     grab_frames, make_world_fetch, parse_frames_spec, validate_frames,
     write_validation_csv,
 )
 from dronomy_loc.matching import get_matcher
-from dronomy_loc.reference import get_provider
+from dronomy_loc.reference import get_provider, load_reference, save_reference
+
+# Rough per-candidate match cost (s) on CPU, for the pre-flight ETA only.
+_PER_CANDIDATE_S = {"classical": 0.15, "loftr": 3.2, "matchanything": 6.0}
 
 
 def _fmt_row(r) -> str:
@@ -38,10 +44,14 @@ def main():
     cfg = load_config()
     s = getattr(cfg.matching, "search", None)
     ap = argparse.ArgumentParser()
-    ap.add_argument("--frames", default="12",
-                    help="'342,3083,6510' = explicit | bare count '12' = evenly spread")
+    ap.add_argument("--frames", default=None,
+                    help="explicit frame(s): '6510' or '342,3083,6510'")
+    ap.add_argument("--spread", type=int, default=None,
+                    help="instead of --frames: N frames spread evenly across the flight")
+    ap.add_argument("--yes", "-y", action="store_true",
+                    help="skip the pre-flight ETA confirmation")
     ap.add_argument("--method", default=cfg.matching.method,
-                    choices=["classical", "loftr"])
+                    choices=["classical", "loftr", "matchanything"])
     ap.add_argument("--provider", default=cfg.reference.provider)
     ap.add_argument("--prior-lat", type=float, default=cfg.video.rough_lat)
     ap.add_argument("--prior-lon", type=float, default=cfg.video.rough_lon)
@@ -67,23 +77,57 @@ def main():
     n_total = meta["n_frames"] if meta["n_frames"] > 0 else max(f.frame for f in track) + 1
     fps = meta["fps"] or 29.97
 
-    indices = parse_frames_spec(args.frames, n_total)
-    print(f"Frames to validate ({len(indices)}): {indices}")
+    # --frames = explicit (single or comma list); --spread N = N evenly spread.
+    # A bare --frames 6510 means FRAME 6510, never "6510 frames" (that footgun
+    # once queued an 18-day run). Exactly one of the two selects the frames.
+    if args.frames is not None and args.spread is not None:
+        ap.error("pass --frames OR --spread, not both")
+    if args.spread is not None:
+        indices = parse_frames_spec(str(args.spread), n_total)   # count path
+    else:
+        spec = args.frames if args.frames is not None else "342,3083,6510"
+        # force explicit-list parsing even for a single value (add a comma)
+        indices = parse_frames_spec(spec if "," in spec else f"{spec},{spec}", n_total)
+
+    scales = tuple(float(x) for x in args.scales.split(","))
+    n_cand = len(grid_centers(args.prior_lat, args.prior_lon, args.radius, args.step)) * len(scales)
+    per_frame = n_cand * _PER_CANDIDATE_S.get(args.method, 1.0)
+    eta_s = len(indices) * per_frame
+    print(f"PLAN: {len(indices)} frame(s) x {n_cand} candidates ({args.method}) "
+          f"~= {per_frame:.0f} s/frame -> ETA {eta_s/60:.1f} min ({eta_s/3600:.1f} h)")
+    if len(indices) <= 12:
+        print(f"  frames: {indices}")
+    else:
+        print(f"  frames: {indices[:5]} ... {indices[-3:]}  ({len(indices)} total)")
+    if eta_s > 1800 and not args.yes and sys.stdin.isatty():
+        print(f"  This will take ~{eta_s/3600:.1f} h. Press Enter to proceed, Ctrl+C to abort.")
+        try:
+            input()
+        except (EOFError, KeyboardInterrupt):
+            print("aborted."); return
+
     print("Grabbing frames (one sequential pass)...")
     frames = grab_frames(video, indices,
                          resize_long_edge=getattr(cfg.frames, "resize_long_edge", 1920))
 
     # KEY OPTIMIZATION: the whole flight fits in one tile, so fetch the imagery
-    # ONCE and serve every grid x scale candidate as a local crop of it.
-    provider = get_provider(args.provider, cfg)
-    print(f"Fetching one {args.world_span:g} m world tile "
-          f"({args.world_pixels} px, provider={args.provider})...")
-    world = provider.fetch(args.prior_lat, args.prior_lon,
-                           args.world_span, args.world_pixels)
+    # ONCE and serve every grid x scale candidate as a local crop of it. Cached
+    # on disk (PNOA's WMS throws transient 502s) and reused across runs.
+    ref_dir = resolve(cfg.reference.out_dir)
+    cache_name = f"world_{args.provider}"
+    try:
+        world = load_reference(ref_dir, cache_name)
+        print(f"Loaded cached world tile reference_{cache_name}.png")
+    except FileNotFoundError:
+        provider = get_provider(args.provider, cfg)
+        print(f"Fetching one {args.world_span:g} m world tile "
+              f"({args.world_pixels} px, provider={args.provider})...")
+        world = provider.fetch(args.prior_lat, args.prior_lon,
+                               args.world_span, args.world_pixels)
+        save_reference(world, ref_dir, cache_name)
     fetch_tile = TileCache(make_world_fetch(world))   # shared across ALL frames
 
     matcher = get_matcher(args.method, cfg)
-    scales = tuple(float(x) for x in args.scales.split(","))
 
     summary = validate_frames(
         frames, track, args.prior_lat, args.prior_lon, matcher, fetch_tile,

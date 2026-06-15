@@ -98,3 +98,25 @@ Reading it:
 - Caveat: drift here is benign partly because the flight is slow (~1 m/s)
   and the scene static; the error-vs-hops curve, not the headline mean, is
   the honest deliverable. CSV: `data/outputs/vo_trajectory.csv`.
+
+## Shape-precision metric (Adrian's graded criterion)
+
+`scripts/09_trajectory_report.py` scores the same VO run the way Adrian asked
+("similar in shape and dimensions, even if off by a few meters") — rigid SE(2)
+alignment (rotation+translation, NO scale), then ATE. Figure:
+`docs/figures/trajectory_report.png`.
+
+| metric | value | meaning |
+|---|---|---|
+| ATE raw | 35.7 m | before alignment (penalizes constant offset) |
+| **ATE SE(2)-aligned** | **27.6 m** | the graded shape metric (686 frames) |
+| Path-length ratio | **0.91** | est path is 444 m vs GT 488 m — dimensions ~right |
+| Heading offset | −6.2° | constant bias the rigid align removes |
+
+Honest read: the loop shape is clearly recovered (see the figure — both tracks
+trace the same circuit), but pure VO drifts because **all three anchors sit in
+the final segment** (frames 6400–6600), so most frames chain 100s of hops back.
+The aligned 27.6 m is dominated by that one-sided anchoring. **Lever:** the
+appearance-gap work (PLAN §3b) is what unlocks anchors earlier in the flight;
+each new anchor cuts the chain length and tightens the shape. This row is the
+"before" — re-measured after each anchor added.

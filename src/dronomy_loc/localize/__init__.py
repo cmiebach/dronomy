@@ -11,3 +11,6 @@ from .odometry import (  # noqa: F401
     Anchor, ChainResult, PairwiseLink, anchor_from, chain_poses, drift_curve,
     pairwise_homographies,
 )
+from .trajectory import (  # noqa: F401
+    SE2, TrajectoryMetrics, align_se2, lonlat_to_local_m, score_trajectory,
+)

@@ -1,0 +1,48 @@
+# Dronomy pipeline — deployment via Docker Compose.
+#
+# This is a batch CLI tool, not a long-running service. Use `docker compose run`
+# to execute a pipeline step. Run from this docker/ directory (the build context
+# is the repo root, `..`):
+#
+#   docker compose build
+#   docker compose run --rm dronomy                                   # stack sanity check
+#   docker compose run --rm dronomy python scripts/01_extract_frames.py
+#   docker compose run --rm dronomy python scripts/02_fetch_reference.py
+#
+# Code, config, data, and the video are mounted (not baked), so edits / a git
+# pull apply without a rebuild. The video and generated data never travel
+# through git or the image (see .gitignore / .dockerignore).
+services:
+  dronomy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: dronomy-loc
+    working_dir: /workspace
+    environment:
+      - PYTHONUNBUFFERED=1
+      # Earth Engine project + (optional) headless service-account auth.
+      - EE_PROJECT=${EE_PROJECT:-}
+      - EE_SERVICE_ACCOUNT=${EE_SERVICE_ACCOUNT:-}
+      - EE_SERVICE_ACCOUNT_KEY=${EE_SERVICE_ACCOUNT_KEY:-}
+    # Optional .env (EE_PROJECT, GOOGLE creds, etc.). Not required to build/run.
+    env_file:
+      - path: ../.env
+        required: false
+    volumes:
+      # Editable code + config — edit on host, no rebuild needed.
+      - ../src:/workspace/src
+      - ../scripts:/workspace/scripts
+      - ../config:/workspace/config
+      # Data in/out. The big video lives under dronomy_video/ and is read-only.
+      - ../data:/workspace/data
+      - ../dronomy_video:/workspace/dronomy_video:ro
+      # ── Earth Engine auth — pick ONE (see to-dolist.txt) ──────────────
+      # (a) Mount host user credentials from `earthengine authenticate`.
+      #     Set EE_CREDENTIALS_DIR in .env to the host path of ~/.config/earthengine
+      #     (Windows: C:/Users/<you>/.config/earthengine).
+      # - ${EE_CREDENTIALS_DIR}:/root/.config/earthengine:ro
+      # (b) Mount a service-account key and point EE_SERVICE_ACCOUNT_KEY at it:
+      #     EE_SERVICE_ACCOUNT_KEY=/run/secrets/ee-key.json in .env
+      # - ${EE_KEY_FILE}:/run/secrets/ee-key.json:ro
+    command: ["python", "-c", "import cv2, ee, kornia, dronomy_loc; print('dronomy-loc container OK')"]

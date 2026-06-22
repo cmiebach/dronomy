@@ -1,0 +1,105 @@
+# Dronomy GPS-denied localization — central configuration.
+# Loaded by src/dronomy_loc/config.py. Paths are relative to the repo root.
+
+# ── Input video ───────────────────────────────────────────────────────
+video:
+  path: "dronomy_video/IE_Challenge_lat43_521955_lon5_624290.MP4"
+  # Rough recording location parsed from the filename (lat, lon). Used as the
+  # localization prior and to centre the reference-imagery fetch.
+  rough_lat: 43.521955
+  rough_lon: -5.624290   # NOTE: filename dropped the minus sign. True loc = Asturias, Spain (not France).
+  # Per-frame GPS track decoded from the DJI djmd stream (scripts/06).
+  # GROUND TRUTH ONLY — used to score error, never as a localizer input.
+  gps_track_csv: "data/gps_track.csv"
+
+# ── Frame extraction ──────────────────────────────────────────────────
+frames:
+  out_dir: "data/frames"
+  every_n_seconds: 1.0      # sample 1 frame/sec (set via --fps in the script too)
+  max_frames: null          # null = no cap
+  resize_long_edge: 1920    # downscale 4K frames for matching speed (null = keep 4K)
+  jpeg_quality: 95
+  blur_filter: "sharpest"   # "sharpest" = keep the sharpest frame per window | "off" = plain uniform
+  min_blur_var: 0.0         # drop a window only if even its sharpest frame scores below this (0 = never)
+  # Sharded ingestion (scripts/05): resumable, integrity-verified, manifest-driven.
+  ingest_dir: "data/ingest"
+  shard_seconds: 30.0       # frames grouped into ~30 s shards; resume skips complete shards
+
+# ── Reference satellite imagery ───────────────────────────────────────
+reference:
+  out_dir: "data/reference"
+  # esri = keyless global sub-meter (works today, default) | pnoa = Spanish IGN orthophoto,
+  # ~0.10-0.25 m/px over the flight area (best accuracy) | gee = needs auth | ign = France-only.
+  provider: "esri"
+  # Ground footprint of the reference tile to fetch, centred on the rough location.
+  span_meters: 1500         # 1.5 km x 1.5 km area
+  pixels: 4096              # output raster size (square); ~0.37 m/px at 1500 m span
+  # One-world-tile optimization (scripts/07/08): the whole flight stays within
+  # ~109 m of the prior, so one tile covers every search candidate; candidates
+  # are cropped locally from it (zero per-candidate network calls).
+  world_span_m: 600.0
+  world_pixels: 4096
+  # Esri World Imagery (keyless ArcGIS REST export; sporadic 5xx handled by retry):
+  esri:
+    export_url: "https://services.arcgisonline.com/arcgis/rest/services/World_Imagery/MapServer/export"
+  # Spanish IGN PNOA orthophoto (keyless WMS; covers Asturias at ~0.10-0.25 m/px):
+  pnoa:
+    wms_url: "https://www.ign.es/wms-inspire/pnoa-ma"
+    layer: "OI.OrthoimageCoverage"
+  # IGN-specific (no API key, but FRANCE ONLY — the true location is in Spain, so this won't return imagery):
+  ign:
+    wms_url: "https://data.geopf.fr/wms-r/wms"
+    layer: "HR.ORTHOIMAGERY.ORTHOPHOTOS"
+    image_format: "image/geotiff"   # geotiff carries georeferencing; png/jpeg also work
+  # GEE-specific. One-time: `earthengine authenticate` + a Cloud project with the Earth Engine API enabled.
+  gee:
+    project: ""                              # your GEE Cloud project (or set EE_PROJECT env var)
+    collection: "COPERNICUS/S2_SR_HARMONIZED"  # Sentinel-2 SR (~10 m/px, global, free)
+    start_date: "2023-01-01"
+    end_date: "2024-12-31"
+    cloud_prop: "CLOUDY_PIXEL_PERCENTAGE"    # per-scene cloud metadata field
+    max_cloud_pct: 10                        # drop scenes cloudier than this, then median-composite
+    rgb_bands: ["B4", "B3", "B2"]            # true-colour
+    vis_min: 0
+    vis_max: 3000
+    max_zoom: 17                             # cap tile zoom (S2 detail tops out ~zoom 13-14)
+
+# ── Matching ──────────────────────────────────────────────────────────
+matching:
+  method: "classical"       # "classical" (SIFT/ORB) | "loftr" | "superglue"
+  classical:
+    detector: "SIFT"        # SIFT | ORB | AKAZE
+    max_features: 8000
+    ratio_test: 0.75        # Lowe ratio
+  deep:
+    model: "loftr"          # kornia LoFTR
+    weights: "outdoor"      # LoFTR pretrained variant
+    device: "cpu"           # no local CUDA; switch to "cuda" on better hardware
+  # MatchAnything (cross-modality; targets the appearance gap / coverage ceiling).
+  # Real weights ship only in zju3dv's imcui fork -> run in docker/Dockerfile.matchanything.
+  matchanything:
+    model: "eloftr"         # eloftr | roma  (roma = stronger, much slower on CPU)
+    device: "cpu"
+    max_long_edge: 832
+  ransac:
+    reproj_threshold_px: 5.0
+    confidence: 0.999
+    min_inliers: 12
+  # Grid-of-centres x multi-scale search around the coarse prior (localize/search.py).
+  # Telemetry shows the whole flight stays within ~109 m of the prior at ~50 m altitude,
+  # so this grid covers every possible position; >=20 inliers = trusted lock (calibrated
+  # on this footage: 4-9 inliers is the noise floor).
+  search:
+    radius_m: 120.0
+    step_m: 60.0
+    scales_m: [50.0, 80.0, 110.0, 140.0]
+    pixels: 640
+    min_inliers_lock: 20
+
+# ── Outputs ───────────────────────────────────────────────────────────
+output:
+  dir: "data/outputs"
+  save_overlays: true
+  trajectory_csv: "data/outputs/trajectory.csv"
+  validation_csv: "data/outputs/validation.csv"
+  vo_trajectory_csv: "data/outputs/vo_trajectory.csv"

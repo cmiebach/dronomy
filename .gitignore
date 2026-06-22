@@ -1,0 +1,52 @@
+# ── Large binary assets (NEVER commit — keep repo light) ──────────────
+# Drone footage (3.76 GB) and slide deck (140 MB) live locally / in storage.
+dronomy_video/
+*.MP4
+*.mp4
+*.mov
+*.MOV
+project_instructions/*.pptx
+
+# Scratch artifacts produced during exploration
+project_instructions/_extracted.txt
+project_instructions/_sample_*.jpg
+
+# ── Generated data (frames, shards, fetched tiles, outputs) ───────────
+data/bench/
+data/frames/
+data/ingest/
+data/reference/
+data/outputs/
+data/cache/
+data/*.json
+data/*.csv
+*.tif
+*.tiff
+
+# ── Python ────────────────────────────────────────────────────────────
+.pytest_cache/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+
+# ── Notebooks ─────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Secrets / credentials (Google Earth Engine, API keys) ─────────────
+.env
+*.key
+service-account*.json
+credentials.json
+
+# ── IDE / OS ──────────────────────────────────────────────────────────
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

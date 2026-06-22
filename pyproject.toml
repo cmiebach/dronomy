@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dronomy-loc"
+version = "0.1.0"
+description = "GPS-denied visual localization of drone footage against satellite imagery (IE x Dronomy capstone)"
+readme = "README.md"
+requires-python = ">=3.10"
+# Version floors, not pins: lock out APIs we don't have (numpy>=1.24 for the
+# stable random Generator, opencv>=4.8 for current SIFT/homography defaults),
+# while staying installable against whatever recent wheels are local.
+dependencies = [
+    "numpy>=1.24",
+    "opencv-python>=4.8",
+    "scipy>=1.10",
+    "scikit-image>=0.21",
+    "Pillow>=10",
+    "matplotlib>=3.7",
+    "PyYAML>=6",
+    "requests>=2.31",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+# Deep matchers (LoFTR via kornia). Install the CPU torch wheel explicitly:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+deep = ["torch", "torchvision", "kornia"]
+# Google Earth Engine reference provider (needs a Google account + auth).
+gee = ["earthengine-api", "geemap"]
+# Test tooling.
+dev = ["pytest>=8"]
+# NOTE: the real MatchAnything backend (matching/matchanything.py) needs zju3dv's
+# fork of `imcui` plus the MatchAnything weights. That fork is not on PyPI and is
+# heavy/CPU-pinned, so it is NOT a hard dependency here — it lives only in the
+# dedicated image (docker/Dockerfile.matchanything). The import is deferred so the
+# package and the test suite never depend on it.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,147 @@
+================================================================
+ DRONOMY — TO-DO LIST (things only you can do)
+ Updated: 2026-06-11
+================================================================
+
+----------------------------------------------------------------
+0. FROM ADRIAN'S EMAIL (2026-06-10) — do these first
+----------------------------------------------------------------
+[ ] 0.1  Save the email attachments into the project:
+         - the SRT telemetry file  -> project_instructions/ (dev-only input)
+         - the GPS ground-truth file -> project_instructions/
+         Then run the cross-check vs our extracted track (ask Claude:
+         "cross-check Adrian's GT file against data/gps_track.csv").
+[ ] 0.2  Watch for the camera-calibration email (intrinsics). When it
+         arrives, drop the numbers into config (a camera: section will be
+         added) for the undistortion pass.
+[~] 0.3  Google Earth desktop: manually export one image of the flight area
+         (File > Save Image at max resolution, note the view bounds or save
+         a KML) -> data/google_earth/. Needed only for the one
+         brief-compliance run in the report.
+
+
+NOTE 2026-06-10: GEE auth (section 1) is NO LONGER BLOCKING — the new
+keyless providers work today: 'esri' (global, default) and 'pnoa'
+(Spanish IGN, ~0.15 m/px over the flight area, best accuracy). Both
+verified live. GEE remains optional (the brief names Google Earth, so
+authenticating it is still worth doing for the report).
+
+Legend:  [ ] todo   [~] optional   [!] decision needed
+
+----------------------------------------------------------------
+1. GOOGLE EARTH ENGINE — ACCESS & AUTH (required for reference imagery)
+----------------------------------------------------------------
+The GEE provider (src/dronomy_loc/reference/gee.py) needs a Google account
+with Earth Engine access and a Cloud project. One-time setup:
+
+[ ] 1.1  Sign up for Earth Engine (free, non-commercial):
+         https://earthengine.google.com/  ->  "Get Started" / register a project.
+
+[ ] 1.2  Create / pick a Google Cloud project and enable the Earth Engine API:
+         https://console.cloud.google.com/  ->  APIs & Services -> enable
+         "Google Earth Engine API". Note the PROJECT ID.
+
+[ ] 1.3  Put the project id where the code can find it. Either:
+           - edit config/config.yaml -> reference.gee.project: "your-project-id"
+           - OR set an env var:   $env:EE_PROJECT = "your-project-id"   (PowerShell)
+
+[ ] 1.4  Authenticate locally (interactive — opens a browser):
+           earthengine authenticate
+         (run it in the terminal: type  ! earthengine authenticate  in Claude,
+          or run it yourself in PowerShell.)
+
+[ ] 1.5  Smoke-test the fetch (writes data/reference/reference_gee.png):
+           python scripts/02_fetch_reference.py
+         Expect: saved raster size, ~m/px, and a center-pixel round-trip that
+         matches (43.521955, -5.624290).
+
+----------------------------------------------------------------
+2. DOCKER DEPLOYMENT  (image + compose are ready in docker/)
+----------------------------------------------------------------
+[ ] 2.1  Install Docker Desktop (Windows) and make sure it's running.
+
+[ ] 2.2  Build the image (run from the docker/ directory):
+           cd docker
+           docker compose build
+
+[ ] 2.3  Sanity-check the container (verifies cv2 + ee + kornia + package import):
+           docker compose run --rm dronomy
+         Expect: "dronomy-loc container OK".
+
+[ ] 2.4  Put the video where the container can see it. Compose mounts the host
+         folder  dronomy_video/  (repo root) -> /workspace/dronomy_video (read-only).
+         Make sure IE_Challenge_lat43_521955_lon5_624290.MP4 is in dronomy_video/.
+
+[ ] 2.5  Run pipeline steps in the container, e.g.:
+           docker compose run --rm dronomy python scripts/01_extract_frames.py --probe
+           docker compose run --rm dronomy python scripts/01_extract_frames.py
+           docker compose run --rm dronomy python scripts/02_fetch_reference.py
+
+[!] 2.6  Earth Engine auth INSIDE Docker — pick one (then uncomment the matching
+         volume line in docker/docker-compose.yml):
+           (a) Mount your host EE credentials (simplest if you did step 1.4):
+                 add to a .env file at repo root:
+                   EE_PROJECT=your-project-id
+                   EE_CREDENTIALS_DIR=C:/Users/Diego/.config/earthengine
+                 and uncomment the "(a)" volume line in docker-compose.yml.
+           (b) Headless service account (best for a VPS / CI):
+                 - create a service account in Google Cloud, grant it Earth Engine,
+                   download its JSON key,
+                 - register the service account for Earth Engine use,
+                 - in .env:
+                     EE_PROJECT=your-project-id
+                     EE_SERVICE_ACCOUNT=name@your-project.iam.gserviceaccount.com
+                     EE_SERVICE_ACCOUNT_KEY=/run/secrets/ee-key.json
+                     EE_KEY_FILE=C:/path/to/key.json   (host path)
+                 - uncomment the "(b)" volume line in docker-compose.yml.
+         (gee.py already supports both: service account if EE_SERVICE_ACCOUNT[_KEY]
+          are set, otherwise stored user credentials.)
+
+----------------------------------------------------------------
+3. OPEN DECISIONS (will affect matching quality — flag for later)
+----------------------------------------------------------------
+[!] 3.1  Reference resolution. Sentinel-2 (GEE default) is ~10 m/px. config asks
+         for 4096 px over 1500 m (0.37 m/px) -> that just UPSAMPLES; real detail
+         tops out ~zoom 13-14. Options:
+           - lower reference.pixels to ~512-1024 (honest for Sentinel-2), or
+           - switch to a sub-meter source if matching is weak (see 3.2).
+
+[x] 3.2  Sub-meter imagery: DONE 2026-06-10 — Esri AND Spanish PNOA providers
+         implemented natively (reference/esri.py, reference/pnoa.py), both
+         keyless, both verified live against the flight area.
+
+[~] 3.3  Matcher fallback. Wire SIFT (classical) as an automatic fallback inside
+         localize() when the deep matcher returns too few RANSAC inliers. SIFT
+         impl also available on `caspar-refactor` (matching/sift.py).
+
+[x] 3.4  torch+kornia (CPU) installed; LoFTR working. Frame 6510 locks at 1.76 m.
+
+[ ] 3.5  MatchAnything (cross-modal; the lever for the ~6% coverage ceiling) is
+         CODE-WIRED (matching/matchanything.py; --method matchanything). To RUN
+         it needs the real zju3dv weights, which are NOT in pip imcui. Two paths:
+           (a) reuse Caspar's image: docker/Dockerfile.matchanything on his
+               branch clones the HF Space + downloads weights via gdown. Port it
+               to our repo (our package is dronomy_loc, his is dronomy) OR run
+               our code mounted into his image.
+           (b) make a Python 3.10-3.12 venv, clone the zju3dv fork
+               (huggingface.co/spaces/LittleFrog/MatchAnything), pip install -e
+               it + 'spaces', fetch weights.zip -> imcui/third_party/
+               MatchAnything/weights/. Then: set IMCUI_CONFIG if needed and run
+               scripts/07 --method matchanything.
+         Do NOT pip install imcui into the main conda env: it pins numpy<2.3 and
+         would break the working stack. Validate via the 35-stop matchability
+         scan: does coverage rise above 6%?
+
+----------------------------------------------------------------
+4. DONE (no action needed — recorded here for context)
+----------------------------------------------------------------
+[x] Frame extraction with sharpest-in-window blur filter (scripts/01, frames.py).
+[x] Longitude sign fix: prior is lat 43.521955, lon -5.624290 (Asturias, Spain).
+[x] GEE map-tiles reference provider implemented (gee.py); provider switched to "gee".
+[x] earthengine-api installed locally; tile geometry verified offline.
+[x] Dockerfile + docker-compose.yml + .dockerignore created (this file's section 2).
+[x] 2026-06-10: exiftool installed (winget); GPS ground truth extracted (6853 fixes,
+    data/gps_track.csv — matches caspar's GT exactly; scoring only, never an input).
+[x] 2026-06-10: full video ingested (8 shards, 229 blur-filtered frames, verified).
+[x] 2026-06-10: first real localization locked (SIFT grid search, frame 6510, 90.7 m
+    = the documented SIFT baseline). Next accuracy lever = LoFTR (3.4).

@@ -14,3 +14,4 @@ from .odometry import (  # noqa: F401
 from .trajectory import (  # noqa: F401
     SE2, TrajectoryMetrics, align_se2, lonlat_to_local_m, score_trajectory,
 )
+from .altitude import AltitudeEstimate, estimate_altitude  # noqa: F401

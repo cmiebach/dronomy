@@ -1,0 +1,77 @@
+# Real MatchAnything (zju3dv) image for dronomy-loc.
+#
+# MatchAnything ships only in zju3dv's fork of image-matching-webui (imcui) — the
+# HF Space carries the matchanything_eloftr/_roma zoo entries plus the loader
+# (imcui/hloc/matchers/matchanything.py). The PyPI imcui does NOT contain the
+# MatchAnything weights and falls back to the base architecture. So this backend
+# gets its own image; the main env (and the test suite) never depend on imcui.
+#
+# CPU build for linux/amd64: poselib and friends only ship x86_64 wheels, and the
+# target VPS is x86_64 anyway. On a GPU host, swap the base for a CUDA torch image
+# and install torch/torchvision without the CPU index.
+#
+# Build context is the repo ROOT (see docker/docker-compose.yml `context: ..`),
+# so the COPY paths below are relative to the project root, not docker/.
+FROM --platform=linux/amd64 python:3.10-slim
+
+# build-essential/cmake/git : C++ extensions (pytlsd, pycolmap)
+# git-lfs/unzip/wget        : repo + weights
+# libgl1/libglib2.0-0       : OpenCV runtime
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential cmake git git-lfs wget unzip \
+        libgl1 libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+
+# zju3dv's fork = the HF Space (image-matching-webui with MatchAnything integrated).
+RUN git clone --depth 1 https://huggingface.co/spaces/LittleFrog/MatchAnything ma
+WORKDIR /opt/ma
+
+# Upgrade pip: the old pip (23.0.1) trips over the typing-extensions metadata on
+# the PyTorch CPU index ("expected 'typing-extensions'..."). Without this fix pip
+# would otherwise pull the ~5 GB CUDA torch from PyPI as a dependency.
+# setuptools<81: from 81 on pkg_resources is removed, but torchmetrics 0.6.0
+# (transitively via pytorch-lightning 1.4.9) still imports it.
+RUN pip install --no-cache-dir --upgrade pip wheel 'setuptools<81'
+
+# CPU torch first (avoids the CUDA libs). These versions cover the
+# torch/torchvision pin in the fork's requirements.txt, so the next step does
+# not pull them again.
+RUN pip install --no-cache-dir torch==2.8.0 torchvision==0.23.0 \
+        --index-url https://download.pytorch.org/whl/cpu
+
+# Remaining dependencies of the fork (numpy~=1.24, pytorch-lightning, pycolmap,
+# pytlsd, poselib, kornia ...). 'spaces' is not in requirements.txt but is
+# imported by imcui/ui/utils.py (HF Spaces helper). Then make imcui (the fork)
+# importable.
+RUN pip install --no-cache-dir -r requirements.txt spaces
+RUN pip install --no-cache-dir -e . --no-deps
+
+# MatchAnything weights: weights.zip from Google Drive (gdown) into
+# imcui/third_party/MatchAnything/weights/ — exactly where the loader looks for
+# matchanything_eloftr.ckpt / matchanything_roma.ckpt.
+RUN cd imcui/third_party/MatchAnything \
+    && gdown 12L3g9-w8rR9K2L4rYaGaDJ7NqX1D713d \
+    && unzip -q weights.zip && rm -f weights.zip \
+    && ls -la weights/
+
+# Our package: install dronomy_loc so matching/matchanything.py can drive imcui
+# from inside this image. --no-deps keeps the fork's pinned deps intact (our
+# floors must not re-resolve numpy/torch here). Copy only the install inputs so
+# this layer caches unless they change.
+COPY pyproject.toml README.md /opt/ma/dronomy/
+COPY src/ /opt/ma/dronomy/src/
+RUN pip install --no-cache-dir -e /opt/ma/dronomy --no-deps
+
+ENV PYTHONUNBUFFERED=1
+# matching/matchanything.py reads the zoo (the matchanything_* entries) from this
+# config when IMCUI_CONFIG is set; otherwise it falls back to the packaged
+# imcui config/config.yaml.
+ENV IMCUI_CONFIG=/opt/ma/config/config.yaml
+WORKDIR /opt/ma/dronomy
+
+# Verify the stack imports — drive the matcher via the package or a script, e.g.
+#   docker run --rm dronomy-matchanything \
+#     python -c "from dronomy_loc.matching import get_matcher; print('OK')"
+CMD ["python", "-c", "import torch, imcui, dronomy_loc; print('dronomy-matchanything container OK')"]

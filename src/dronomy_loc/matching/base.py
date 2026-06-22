@@ -33,14 +33,25 @@ def estimate_homography(
     confidence: float = 0.999,
     min_inliers: int = 12,
 ) -> tuple[np.ndarray | None, np.ndarray | None]:
-    """RANSAC homography src->dst. Returns (H, inlier_mask) or (None, None)."""
+    """Robust homography src->dst. Returns (H, inlier_mask) or (None, None).
+
+    Uses MAGSAC++ (cv2.USAC_MAGSAC) — it weights correspondences by quality
+    instead of a hard threshold, giving more stable, reproducible inlier counts
+    near the low cross-modal floor — and falls back to plain RANSAC on the rare
+    OpenCV builds/inputs where USAC errors out."""
     if len(src_pts) < 4:
         return None, None
-    H, mask = cv2.findHomography(
-        src_pts.reshape(-1, 1, 2).astype(np.float32),
-        dst_pts.reshape(-1, 1, 2).astype(np.float32),
-        cv2.RANSAC, reproj_threshold, confidence=confidence,
-    )
+    src = src_pts.reshape(-1, 1, 2).astype(np.float32)
+    dst = dst_pts.reshape(-1, 1, 2).astype(np.float32)
+    try:
+        H, mask = cv2.findHomography(src, dst, cv2.USAC_MAGSAC,
+                                     reproj_threshold, confidence=confidence,
+                                     maxIters=10000)
+    except cv2.error:
+        H, mask = None, None
+    if H is None:  # USAC can fail on degenerate sets; RANSAC is the safety net
+        H, mask = cv2.findHomography(src, dst, cv2.RANSAC, reproj_threshold,
+                                     confidence=confidence)
     if H is None:
         return None, None
     mask = mask.ravel().astype(bool)

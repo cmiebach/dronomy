@@ -50,8 +50,11 @@ data/                        Generated artifacts (git-ignored)
 ## Setup
 ```bash
 python -m venv .venv && .venv\Scripts\activate     # Windows
-pip install -e .                                    # core deps
-# Deep matcher (CPU build — no local CUDA):
+pip install -e .                                    # core deps (any Python 3.10-3.14)
+# Deep matcher (CPU build — no local CUDA). NOTE: torch has no wheels for
+# Python 3.14 yet — use Python <=3.12 for the loftr/matchanything paths.
+# The classical (SIFT) path works on any version. If torch/kornia are missing,
+# a --method loftr run now fails fast with a clear message (not "0 inliers").
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 pip install kornia
 # Google Earth Engine (optional, primary source per brief): pip install earthengine-api && earthengine authenticate

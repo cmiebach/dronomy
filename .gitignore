@@ -50,3 +50,6 @@ credentials.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# extra local deep-matcher env (py3.12 + torch)
+venv312/

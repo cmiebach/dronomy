@@ -93,6 +93,11 @@ def search_localize(
             try:
                 tile = fetch_tile(lat, lon, span, pixels)
                 pose, _ = localize_frame(frame_bgr, tile, matcher)
+            except ImportError:
+                # Missing matcher dependency (e.g. torch/kornia for LoFTR) is a
+                # setup error, not a bad tile — surface it loudly instead of
+                # masking it as "0 inliers" on every cell.
+                raise
             except Exception:
                 # One bad tile (provider hiccup, malformed response) must not
                 # kill the whole search — record the cell as failed and move on.

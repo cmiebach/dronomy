@@ -242,3 +242,41 @@ def fig_coverage(out: str | Path, per_frame_pct: float = 6.0,
             "frames, VO fills the rest." % per_frame_pct,
             transform=ax.transAxes, fontsize=8, color="#3a3a3c")
     return _save(fig, out)
+
+
+def fig_model_comparison(per_model, out: str | Path, *, title: str = "") -> Path:
+    """Benchmark plot for the framework runner: compare models on three field
+    KPIs. `per_model` is a mapping {model_name: FieldMetrics} (duck-typed — any
+    object with .recall_5m, .lock_rate, .median_err_m). Recall and coverage are
+    shown as percentages (higher better); median error as metres (lower better,
+    plotted on a twin axis). Missing values render as 0/empty."""
+    names = list(per_model)
+    recall = [100.0 * getattr(per_model[n], "recall_5m", 0.0) for n in names]
+    cover = [100.0 * getattr(per_model[n], "lock_rate", 0.0) for n in names]
+    med = [getattr(per_model[n], "median_err_m", None) for n in names]
+    x = np.arange(len(names))
+    w = 0.38
+
+    fig, ax = plt.subplots(figsize=(max(7, 1.6 * len(names) + 4), 6))
+    ax.bar(x - w / 2, recall, w, label="recall@5m (%)", color="#0a84ff")
+    ax.bar(x + w / 2, cover, w, label="coverage (%)", color="#34c759")
+    ax.set_xticks(x)
+    ax.set_xticklabels(names)
+    ax.set_ylabel("percent (higher is better)")
+    ax.set_ylim(0, 105)
+    ax.grid(alpha=0.3, axis="y")
+
+    ax2 = ax.twinx()
+    med_plot = [m if m is not None else np.nan for m in med]
+    ax2.plot(x, med_plot, "o-", color="#ff3b30", label="median error (m)")
+    for xi, m in zip(x, med):
+        if m is not None:
+            ax2.text(xi, m, f" {m:.1f}m", va="bottom", ha="left",
+                     fontsize=9, color="#ff3b30")
+    ax2.set_ylabel("median error, m (lower is better)")
+
+    h1, l1 = ax.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax.legend(h1 + h2, l1 + l2, loc="upper center", ncol=3, fontsize=9)
+    ax.set_title(title or "Model comparison (per scenario)")
+    return _save(fig, out)

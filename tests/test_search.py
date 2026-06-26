@@ -162,6 +162,108 @@ class _StubMatcher(Matcher):
         return MatchResult(pts, pts, np.eye(3), np.ones(len(pts), bool), len(pts))
 
 
+# ── (6) relative-margin lock gate (the RoMA / dense-matcher gate) ──────
+class _DenseStub(Matcher):
+    """Mimics a DENSE matcher: returns an identity-homography 'match' with an
+    inlier count baked into the ref tile's pixel [0,0,0]. Dense matchers score
+    high inliers on EVERY tile, so the number — not its mere presence — is what
+    a real lock has to defend via the margin gate."""
+    def match(self, drone_bgr, ref_rgb) -> MatchResult:
+        n = max(int(ref_rgb[0, 0, 0]), 1)
+        pts = np.zeros((n, 2), np.float32)
+        return MatchResult(pts, pts, np.eye(3), np.ones(n, bool), n)
+
+
+def make_scored_fetch(score_fn):
+    """Tile geometry from a blank world (so an identity-H pose lands on the tile
+    centre), with `score_fn(lat, lon)` baked into pixel [0,0,0] as the inlier
+    count `_DenseStub` will report for that tile."""
+    base = make_fetch(make_world(blank=True))
+
+    def fetch(lat, lon, span_m, pixels):
+        tile = base(lat, lon, span_m, pixels)
+        img = tile.image.copy()
+        img[0, 0, 0] = int(np.clip(score_fn(lat, lon), 0, 255))
+        return GeoImage(image=img, bbox=tile.bbox)
+    return fetch
+
+
+def _cell_score(lat, lon, *, peak, neighbor, distant):
+    """Score by mercator distance from the prior: the peak cell, its near ring,
+    or a far-away alternative hypothesis."""
+    cx, cy = lonlat_to_mercator(LON, LAT)
+    x, y = lonlat_to_mercator(lon, lat)
+    d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+    if d < 1.0:
+        return peak
+    if d < 90.0:
+        return neighbor
+    return distant
+
+
+# A 640x640 frame + pixels=640 => identity-H pose maps the frame centre onto the
+# tile centre, so each candidate's estimate sits exactly on its grid centre and
+# separations equal the grid geometry.
+_FRAME = np.zeros((640, 640, 3), np.uint8)
+_GRID = dict(search_radius_m=120.0, grid_step_m=60.0, scales_m=(80.0,), pixels=640)
+
+
+def test_margin_gate_rejects_confident_wrong_lock():
+    # Peak only 10% above distant rivals: a dense matcher would lock confidently,
+    # but the margin says the hypothesis is not separable -> must NOT lock.
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=110, neighbor=100, distant=100))
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                          lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert res.best.n_inliers == 110            # absolute gate (>=20) passes
+    assert res.runner_up is not None and res.runner_up.n_inliers == 100
+    assert abs(res.margin_ratio - 1.1) < 1e-6
+    assert not res.locked                       # margin gate vetoes it
+    # Same search WITHOUT the margin gate would have locked (the old behaviour).
+    inert = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                            lock_margin_ratio=1.0, margin_separation_m=90.0, **_GRID)
+    assert inert.locked
+
+
+def test_margin_gate_locks_dominant_peak():
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=200, neighbor=100, distant=100))
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                          lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert res.locked
+    assert res.best.n_inliers == 200
+    assert abs(res.margin_ratio - 2.0) < 1e-6
+    # The winning estimate sits on the prior (the peak cell).
+    assert haversine_m(LAT, LON, res.best.pose.lat, res.best.pose.lon) < 5.0
+
+
+def test_runner_up_excludes_same_peak_neighbours():
+    # A single dominant peak (200) with an elevated shoulder ring (170) and far
+    # cells at 100. With a real separation the shoulder is not a rival, so the
+    # peak beats the distant 100 by 2.0 and locks. Drop the separation to 0 and
+    # the 170 shoulder becomes the rival (200/170 = 1.18 < 1.3) -> no lock:
+    # proves the separation is what stops a peak shadowing itself.
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=200, neighbor=170, distant=100))
+    locked = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                             lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert locked.locked
+    assert abs(locked.margin_ratio - 2.0) < 1e-6   # rival is a distant 100 cell
+    leaky = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                            lock_margin_ratio=1.3, margin_separation_m=0.0, **_GRID)
+    assert not leaky.locked
+    assert abs(leaky.margin_ratio - 200 / 170) < 1e-6   # rival is the 170 shoulder
+
+
+def test_margin_gate_inert_by_default():
+    # Default ratio 1.0 keeps the sparse-matcher behaviour: a uniformly-confident
+    # field still locks (absolute gate only), margin reported but not enforced.
+    fetch = make_scored_fetch(lambda la, lo: 100)
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch, **_GRID)
+    assert res.locked
+    assert abs(res.margin_ratio - 1.0) < 1e-6
+
+
 def test_one_bad_tile_fetch_does_not_kill_search():
     blank = make_world(blank=True)
     base = make_fetch(blank)

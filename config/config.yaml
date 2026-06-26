@@ -96,6 +96,27 @@ matching:
     pixels: 640
     min_inliers_lock: 20
 
+# ── Camera intrinsics ─────────────────────────────────────────────────
+# Focal length in pixels is the load-bearing value for metric scale recovery.
+# ~3713 for the provided DJI Mavic 3E wide camera (from its XMP/CalibratedFocalLength);
+# data/intrinsics.py can also extract this per-image via exiftool.
+camera:
+  focal_px: 3713.0
+  hfov_deg: 84.0
+
+# ── Datasets (framework input registry) ───────────────────────────────
+# Each entry is selected by `type` via datasets/get_dataset(). The framework
+# standardizes every entry into Scenarios so one pipeline runs across all of them.
+datasets:
+  - name: "video"               # the provided flight (Asturias, Spain)
+    type: "video"
+  - name: "uavvisloc"           # public multi-region benchmark (11 regions, 7 terrains)
+    type: "uavvisloc"
+    path: "data/datasets/uav-visloc"   # dataset root: <region>/drone/*.jpg + satellite*.tif + CSVs
+  # - name: "satloc"            # stretch goal
+  #   type: "satloc"
+  #   path: "data/datasets/satloc"
+
 # ── Outputs ───────────────────────────────────────────────────────────
 output:
   dir: "data/outputs"

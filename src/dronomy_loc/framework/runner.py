@@ -112,16 +112,33 @@ def run_scenario(
     )
 
 
+def _framework_default(cfg, key, fallback):
+    """Read cfg.framework.<key>, tolerating a missing config block."""
+    fw = getattr(cfg, "framework", None) if cfg is not None else None
+    val = getattr(fw, key, None) if fw is not None else None
+    return val if val is not None else fallback
+
+
 def run(
     dataset_names: Iterable[str],
-    model_names: Iterable[str],
+    model_names: Iterable[str] | None = None,
     *,
     cfg=None,
-    select_metric: str = "recall_5m",
+    select_metric: str | None = None,
     max_samples: int | None = None,
     on_row: Callable[[str, FrameScore], None] | None = None,
 ) -> RunResult:
-    """Top-level entry: build models once, iterate datasets x scenarios x models."""
+    """Top-level entry: build models once, iterate datasets x scenarios x models.
+
+    `model_names`/`select_metric` fall back to the `framework:` config block when
+    omitted, so a CLI can run purely from config; explicit args always override.
+    """
+    if not model_names:
+        model_names = _framework_default(cfg, "models", ["sift"])
+    if select_metric is None:
+        select_metric = _framework_default(cfg, "select_metric", "recall_5m")
+    if max_samples is None:
+        max_samples = _framework_default(cfg, "max_samples", None)
     models = {n: get_model(n, cfg) for n in model_names}
     scenarios: list[ScenarioResult] = []
     for ds_name in dataset_names:

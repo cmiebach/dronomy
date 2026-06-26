@@ -124,3 +124,16 @@ output:
   trajectory_csv: "data/outputs/trajectory.csv"
   validation_csv: "data/outputs/validation.csv"
   vo_trajectory_csv: "data/outputs/vo_trajectory.csv"
+
+# ── Framework runner (Job B) ──────────────────────────────────────────
+# The IoC spine reads these as defaults; explicit args to runner.run() override.
+framework:
+  models: ["sift", "loftr", "roma"]   # benchmark set (loftr needs torch; roma needs the Docker image)
+  select_metric: "recall_5m"          # how the runner picks the best model per scenario
+  max_samples: null                   # cap frames per scenario for quick runs (null = all)
+  exporters: ["geojson", "kml"]       # field-format track exports
+  # Per-dataset search overrides; the runner otherwise derives radius/scales from
+  # the scenario altitude prior + FOV (footprint ~= 2*alt*tan(hfov/2)).
+  search:
+    video:     { altitude_prior_m: 50.0 }    # ~71 m footprint
+    uavvisloc: { altitude_prior_m: 466.0 }   # ~840 m footprint (region 03)

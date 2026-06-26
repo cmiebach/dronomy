@@ -68,6 +68,17 @@ def test_runner_scales_search_per_scene(monkeypatch):
     assert 50.0 < _CAP["radius"] < 100.0
 
 
+def test_framework_defaults_from_cfg():
+    cfg = types.SimpleNamespace(framework=types.SimpleNamespace(
+        models=["loftr"], select_metric="median_err_m", max_samples=5))
+    assert R._framework_default(cfg, "models", ["sift"]) == ["loftr"]
+    assert R._framework_default(cfg, "select_metric", "recall_5m") == "median_err_m"
+    assert R._framework_default(cfg, "max_samples", None) == 5
+    # No cfg / no framework block -> fallbacks.
+    assert R._framework_default(None, "models", ["sift"]) == ["sift"]
+    assert R._framework_default(types.SimpleNamespace(), "models", ["sift"]) == ["sift"]
+
+
 def test_run_scenario_requires_prior():
     sc = _scenario()
     sc.prior = None

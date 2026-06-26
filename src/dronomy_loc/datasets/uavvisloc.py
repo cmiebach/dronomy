@@ -128,6 +128,25 @@ def _stem_key(name: str) -> str:
     return Path(name).stem.lower()
 
 
+def _digits(s: str) -> str:
+    """Digit run in a name, e.g. 'satellite03' -> '03', '03.tif' -> '03'."""
+    return "".join(ch for ch in s if ch.isdigit())
+
+
+def _find_range_csv(root: Path) -> Path | None:
+    """Locate the satellite-extent CSV at the dataset root. The real UAV-VisLoc
+    release ships it with a stray space ('satellite_ coordinates_range.csv'), so
+    match tolerantly on normalised name rather than an exact string."""
+    exact = root / "satellite_coordinates_range.csv"
+    if exact.is_file():
+        return exact
+    for p in sorted(root.glob("*.csv")):
+        n = _norm(p.name)
+        if "range" in n and ("coordinate" in n or "satellite" in n):
+            return p
+    return None
+
+
 # ── GT and range CSV parsing ──────────────────────────────────────────
 
 
@@ -165,8 +184,24 @@ def _load_ranges(csv_path: Path) -> dict[str, tuple[float, float, float, float]]
             continue
         min_lon, max_lon = sorted((lt_lon, rb_lon))   # corner order varies; sort
         min_lat, max_lat = sorted((lt_lat, rb_lat))
-        ranges[_stem_key(str(mapname))] = (min_lon, min_lat, max_lon, max_lat)
+        bbox = (min_lon, min_lat, max_lon, max_lat)
+        ranges[_stem_key(str(mapname))] = bbox
+        # Also key by digit run: the range CSV says '03.tif' while the map file
+        # is 'satellite03.tif' -> link them by the shared region number '03'.
+        d = _digits(str(mapname))
+        if d:
+            ranges.setdefault(d, bbox)
     return ranges
+
+
+def _range_lookup(ranges: dict, sat_path: Path, region: str):
+    """Find a map's bbox tolerant of map-name vs range-name mismatches: try the
+    satellite file stem, the region id, and their digit runs in turn."""
+    for key in (_stem_key(sat_path.name), region.lower(),
+                _digits(sat_path.stem), _digits(region)):
+        if key and key in ranges:
+            return ranges[key]
+    return None
 
 
 def _bbox_from_rasterio(tif_path: Path) -> tuple[float, float, float, float] | None:
@@ -280,14 +315,49 @@ def _make_samples(
     return factory
 
 
+def _load_satellite_rgb(sat_path: Path, max_edge: int | None) -> np.ndarray | None:
+    """Decode a satellite map to RGB, downscaled so the longest edge is <=
+    `max_edge`. Real UAV-VisLoc maps are huge (e.g. 35092x24308 ~ 2.6 GB decoded);
+    the crops we serve are only a few hundred px, so a capped raster keeps memory
+    sane WITHOUT changing georeferencing (same ground extent, fewer pixels). cv2
+    for normal-sized files; PIL for very large ones — cv2.imdecode overflows
+    (signed-int size assert) on ~2 GB+ buffers, so we do NOT hand it those."""
+    if sat_path.stat().st_size <= 1_200_000_000:
+        try:
+            bgr = _imdecode(sat_path, cv2.IMREAD_COLOR)
+        except cv2.error:
+            bgr = None
+        if bgr is not None:
+            h, w = bgr.shape[:2]
+            if max_edge and max(h, w) > max_edge:
+                s = max_edge / max(h, w)
+                bgr = cv2.resize(bgr, (round(w * s), round(h * s)),
+                                 interpolation=cv2.INTER_AREA)
+            return cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    try:                                    # PIL path for very large rasters
+        from PIL import Image
+        Image.MAX_IMAGE_PIXELS = None       # lift the decompression-bomb guard
+        im = Image.open(str(sat_path))
+        if max_edge:
+            im.draft("RGB", (max_edge, max_edge))   # decode at reduced scale when possible
+        im = im.convert("RGB")
+        if max_edge and max(im.size) > max_edge:
+            s = max_edge / max(im.size)
+            im = im.resize((round(im.size[0] * s), round(im.size[1] * s)))
+        return np.asarray(im)
+    except Exception:
+        return None
+
+
 def _make_fetch_tile(sat_path: Path,
-                     bbox_wgs84: tuple[float, float, float, float]) -> FetchTile:
-    """Load the satellite map pixels (RGB) + its WGS84 bbox -> one georeferenced
-    `GeoImage` -> `TileCache(make_world_fetch(world))` (crop-locally, no network)."""
-    bgr = _imdecode(sat_path, cv2.IMREAD_COLOR)
-    if bgr is None:
+                     bbox_wgs84: tuple[float, float, float, float],
+                     max_sat_edge: int | None = 8192) -> FetchTile:
+    """Load the satellite map pixels (RGB, capped) + its WGS84 bbox -> one
+    georeferenced `GeoImage` -> `TileCache(make_world_fetch(world))`
+    (crop-locally, no network)."""
+    rgb = _load_satellite_rgb(sat_path, max_sat_edge)
+    if rgb is None:
         raise FileNotFoundError(f"could not decode satellite map: {sat_path}")
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     min_lon, min_lat, max_lon, max_lat = bbox_wgs84
     minx, miny = lonlat_to_mercator(min_lon, min_lat)
     maxx, maxy = lonlat_to_mercator(max_lon, max_lat)
@@ -327,8 +397,8 @@ class UAVVisLocDataset(Dataset):
                   f"(a real run needs the UAV-VisLoc sample under this path)")
             return []
 
-        range_csv = root / "satellite_coordinates_range.csv"
-        ranges = _load_ranges(range_csv) if range_csv.is_file() else {}
+        range_csv = _find_range_csv(root)
+        ranges = _load_ranges(range_csv) if range_csv else {}
 
         out: list[Scenario] = []
         for region_dir in _list_region_dirs(root):
@@ -350,12 +420,13 @@ class UAVVisLocDataset(Dataset):
                 print(f"uavvisloc: region {region}: no satellite map, skipping")
                 continue
 
-            bbox = ranges.get(_stem_key(sat_path.name))
+            bbox = _range_lookup(ranges, sat_path, region)
             if bbox is None:
                 bbox = _bbox_from_rasterio(sat_path)
             if bbox is None:
+                where = range_csv.name if range_csv else "no range CSV at root"
                 print(f"uavvisloc: region {region}: no geo extent for "
-                      f"{sat_path.name} (missing from {range_csv.name} and no "
+                      f"{sat_path.name} (missing from {where} and no "
                       f"rasterio geotransform), skipping")
                 continue
 

@@ -67,6 +67,17 @@ Adrian: run multiple algorithms, let the framework pick the best per context.
 - We have both pieces: VO (100% coverage) + satellite absolute anchors. Hybrid =
   VO continuous + map corrections when available. Use heading only to reject
   implausible yaw jumps. VO stays secondary per Adrian.
+- **DONE — recursive fusion filter** (`localize/fusion.py`, `tests/test_fusion.py`):
+  constant-velocity Kalman filter + RTS smoother over `[east, north, v_e, v_n]` in a
+  local metre plane. Fuses intermittent absolute fixes (and optional VO velocity),
+  **bridges unlocked gaps**, and **chi-square-gates outlier locks** (the lock-to-the-
+  wrong-building failures). API: `fuse_track(steps)` (generic) and
+  `fuse_frame_scores(rows)` (takes `validate.FrameScore`, returns a fused position
+  for *every* frame). Telemetry-free: only the system's own visual fixes enter.
+  Measured on the real flight geometry with a dense fix stream (sim: 70% lock, 5 m
+  noise, 10% outliers): median **6.0 -> 1.6 m**, worst **386 -> 5.8 m**, 100 outliers
+  gated, full per-frame coverage. Best paired with W1 (RoMA gives the dense fix
+  stream the filter needs to shine).
 
 ### W8 — Feature-stability evaluation  [P3]
 - Prefer rivers/terrain/rocks; treat roads/construction as unreliable. Mostly an

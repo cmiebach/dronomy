@@ -89,11 +89,14 @@ class LocalizationModel:
     search: SceneSearch = field(default_factory=SceneSearch)
 
     def localize(self, sample, fetch_tile: FetchTile,
-                 prior: tuple[float, float]) -> FrameScore:
+                 prior: tuple[float, float],
+                 search: "SceneSearch | None" = None) -> FrameScore:
         """Localize one Sample against a reference `fetch_tile` from a coarse
-        `prior` (lat, lon). Returns a FrameScore; `sample.gt` is used only to
-        populate the truth/error fields, never to drive the search."""
-        s = self.search
+        `prior` (lat, lon). `search` overrides the model's default per call (the
+        runner passes a scene-scaled SceneSearch). Returns a FrameScore;
+        `sample.gt` is used only to populate the truth/error fields, never to
+        drive the search."""
+        s = search or self.search
         t0 = time.perf_counter()
         res = search_localize(
             sample.image_bgr, prior[0], prior[1], self.matcher, fetch_tile,

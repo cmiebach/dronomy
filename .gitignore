@@ -18,6 +18,8 @@ data/ingest/
 data/reference/
 data/outputs/
 data/cache/
+# External benchmarks (UAV-VisLoc ~2GB, SatLoc) — never commit; each user downloads locally
+data/datasets/
 data/*.json
 data/*.csv
 *.tif

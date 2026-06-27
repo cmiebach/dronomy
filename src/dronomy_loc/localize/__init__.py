@@ -19,3 +19,6 @@ from .fusion import (  # noqa: F401
     FusedFix, FusionConfig, FusionEstimate, FusionStep, fuse_frame_scores,
     fuse_track,
 )
+from .multisource import (  # noqa: F401
+    ProviderChoice, localize_multisource, validate_multisource,
+)

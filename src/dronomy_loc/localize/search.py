@@ -110,6 +110,74 @@ def _runner_up(best: Candidate, candidates: list[Candidate],
     return rival
 
 
+def _search_cells(
+    frame_bgr: np.ndarray,
+    centers: list[tuple[float, float]],
+    scales_m: tuple[float, ...],
+    matcher: Matcher,
+    fetch_tile: FetchTile,
+    pixels: int,
+    intrinsics: CameraIntrinsics | None,
+) -> list[Candidate]:
+    """Score every (centre, span) cell and return the candidates in scan order.
+    A failed fetch/match records a pose-less `Candidate` (0 inliers) so the search
+    survives one bad tile; an ImportError (missing matcher dep) is re-raised."""
+    candidates: list[Candidate] = []
+    for lat, lon in centers:
+        for span in scales_m:
+            try:
+                tile = fetch_tile(lat, lon, span, pixels)
+                pose, _ = localize_frame(frame_bgr, tile, matcher, intrinsics)
+            except ImportError:
+                # Missing matcher dependency (e.g. torch/kornia for LoFTR) is a
+                # setup error, not a bad tile — surface it loudly instead of
+                # masking it as "0 inliers" on every cell.
+                raise
+            except Exception:
+                # One bad tile (provider hiccup, malformed response) must not
+                # kill the whole search — record the cell as failed and move on.
+                candidates.append(Candidate(lat, lon, span))
+                continue
+            candidates.append(Candidate(lat, lon, span, pose.n_inliers,
+                                        pose.n_matches, pose if pose.ok else None))
+    return candidates
+
+
+def _pick_best(candidates: list[Candidate]) -> Candidate | None:
+    """The candidate with the most inliers (ties: first encountered, so the order
+    is deterministic). Pose-less (failed) candidates never win."""
+    best: Candidate | None = None
+    for c in candidates:
+        if c.pose is not None and (best is None or c.n_inliers > best.n_inliers):
+            best = c
+    return best
+
+
+def _finalize(
+    best: Candidate | None,
+    candidates: list[Candidate],
+    min_inliers_lock: int,
+    lock_margin_ratio: float,
+    default_separation_m: float,
+    margin_separation_m: float | None,
+) -> SearchResult:
+    """Apply the absolute + relative-margin gates and package a `SearchResult`."""
+    runner_up: Candidate | None = None
+    margin_ratio: float | None = None
+    locked = best is not None and best.n_inliers >= min_inliers_lock
+    if best is not None:
+        sep = margin_separation_m if margin_separation_m is not None else default_separation_m
+        runner_up = _runner_up(best, candidates, sep)
+        if runner_up is not None:
+            # inf when the rival has zero inliers: an uncontested peak always passes.
+            margin_ratio = (best.n_inliers / runner_up.n_inliers
+                            if runner_up.n_inliers > 0 else float("inf"))
+            if best.n_inliers < lock_margin_ratio * runner_up.n_inliers:
+                locked = False
+    return SearchResult(locked=locked, best=best, candidates=candidates,
+                        runner_up=runner_up, margin_ratio=margin_ratio)
+
+
 def search_localize(
     frame_bgr: np.ndarray,
     prior_lat: float,
@@ -144,44 +212,71 @@ def search_localize(
 
     When `intrinsics` is supplied each candidate pose is tilt-corrected to the
     drone's nadir (see `pose_from_homography`) instead of the boresight ground
-    point; the search ranking (inlier count) is unaffected."""
-    candidates: list[Candidate] = []
-    best: Candidate | None = None
-    for lat, lon in grid_centers(prior_lat, prior_lon, search_radius_m, grid_step_m):
-        for span in scales_m:
-            try:
-                tile = fetch_tile(lat, lon, span, pixels)
-                pose, _ = localize_frame(frame_bgr, tile, matcher, intrinsics)
-            except ImportError:
-                # Missing matcher dependency (e.g. torch/kornia for LoFTR) is a
-                # setup error, not a bad tile — surface it loudly instead of
-                # masking it as "0 inliers" on every cell.
-                raise
-            except Exception:
-                # One bad tile (provider hiccup, malformed response) must not
-                # kill the whole search — record the cell as failed and move on.
-                candidates.append(Candidate(lat, lon, span))
-                continue
-            cand = Candidate(lat, lon, span, pose.n_inliers, pose.n_matches,
-                             pose if pose.ok else None)
-            candidates.append(cand)
-            if cand.pose is not None and (best is None or cand.n_inliers > best.n_inliers):
-                best = cand
+    point; the search ranking (inlier count) is unaffected.
 
-    runner_up: Candidate | None = None
-    margin_ratio: float | None = None
-    locked = best is not None and best.n_inliers >= min_inliers_lock
-    if best is not None:
-        sep = margin_separation_m if margin_separation_m is not None else 1.5 * grid_step_m
-        runner_up = _runner_up(best, candidates, sep)
-        if runner_up is not None:
-            # inf when the rival has zero inliers: an uncontested peak always passes.
-            margin_ratio = (best.n_inliers / runner_up.n_inliers
-                            if runner_up.n_inliers > 0 else float("inf"))
-            if best.n_inliers < lock_margin_ratio * runner_up.n_inliers:
-                locked = False
-    return SearchResult(locked=locked, best=best, candidates=candidates,
-                        runner_up=runner_up, margin_ratio=margin_ratio)
+    This is the COARSE pass: its grid step and scale ladder are deliberately
+    wide so the true location is never missed. Feed the result to
+    `refine_localize` to re-search a tight grid + finer scales around the winner
+    and tighten the estimate to sub-grid precision."""
+    centers = grid_centers(prior_lat, prior_lon, search_radius_m, grid_step_m)
+    candidates = _search_cells(frame_bgr, centers, scales_m, matcher,
+                               fetch_tile, pixels, intrinsics)
+    best = _pick_best(candidates)
+    return _finalize(best, candidates, min_inliers_lock, lock_margin_ratio,
+                     1.5 * grid_step_m, margin_separation_m)
+
+
+def refine_localize(
+    frame_bgr: np.ndarray,
+    coarse: SearchResult,
+    matcher: Matcher,
+    fetch_tile: FetchTile,
+    *,
+    refine_radius_m: float | None = None,
+    refine_step_m: float | None = None,
+    scale_factors: tuple[float, ...] = (0.85, 0.925, 1.0, 1.075, 1.15),
+    pixels: int = 640,
+    intrinsics: CameraIntrinsics | None = None,
+) -> SearchResult:
+    """Second, FINE pass of a coarse-to-fine search: re-search a tight grid and
+    a finer scale ladder centred on the coarse winner, then keep the strongest
+    candidate across BOTH passes.
+
+    The coarse pass (`search_localize`) uses a wide grid step (~60 m) and a
+    coarse scale ladder so the true location is never missed — but that same
+    coarseness leaves the estimate up to half a grid step off the truth and the
+    tile span up to a full ladder gap from the true ground footprint, weakening
+    the homography. This pass shrinks both: a grid of step `refine_step_m`
+    (default ¼ of the winner's span) over ±`refine_radius_m` (default ½ the
+    winner's span) around the winner, crossed with `scale_factors` × the
+    winner's span. Because the grid and ladder always include the winner's own
+    cell exactly (offset 0 and factor 1.0), the refined best can only match or
+    beat the coarse best — never regress.
+
+    Refinement is for a CONFIRMED lock only: an unlocked coarse result is
+    returned unchanged (refining noise would just relocate the noise). The
+    coarse lock decision and its margin are preserved verbatim — this pass
+    improves POSITION, it does not re-litigate the gate, so a distant rival the
+    coarse margin already rejected can't be "refined" into a lock. `best` is
+    updated to the refined candidate; `candidates` is the union of both passes."""
+    if coarse.best is None or not coarse.locked:
+        return coarse
+    b = coarse.best
+    radius = refine_radius_m if refine_radius_m is not None else 0.5 * b.span_m
+    step = refine_step_m if refine_step_m is not None else 0.25 * b.span_m
+    centers = grid_centers(b.lat, b.lon, radius, step)
+    # De-duplicate spans (factors can collide after rounding) and keep them sorted
+    # so the scan order — and thus tie-breaking — stays deterministic.
+    scales = tuple(sorted({round(b.span_m * f, 3) for f in scale_factors}))
+    fine = _search_cells(frame_bgr, centers, scales, matcher,
+                         fetch_tile, pixels, intrinsics)
+    fine_best = _pick_best(fine)
+    # max() guard: cache misses on the round-tripped centre could shave an inlier,
+    # so never let the refined estimate score below the coarse one it replaces.
+    best = b if fine_best is None or fine_best.n_inliers < b.n_inliers else fine_best
+    return SearchResult(locked=True, best=best,
+                        candidates=coarse.candidates + fine,
+                        runner_up=coarse.runner_up, margin_ratio=coarse.margin_ratio)
 
 
 class TileCache:

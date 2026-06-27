@@ -100,6 +100,31 @@ Adrian: run multiple algorithms, let the framework pick the best per context.
 - Prefer rivers/terrain/rocks; treat roads/construction as unreliable. Mostly an
   eval/reporting lens for the non-urban target environment.
 
+### W9 — Coarse-to-fine search refinement  [P1, precision lever]
+- **DONE — `refine_localize(frame, coarse, matcher, fetch_tile, ...)`**
+  (`localize/search.py`, `tests/test_search.py`): a second FINE pass over a
+  confirmed lock. `search_localize` is deliberately COARSE (60 m grid step,
+  wide scale ladder) so the truth is never missed — but that leaves the estimate
+  up to half a grid step off and the tile span up to a ladder gap from the true
+  footprint. `refine_localize` re-searches a tight grid (default step ¼ of the
+  winner's span over ±½-span) crossed with a finer scale ladder (`scale_factors`
+  × the winner's span) centred on the coarse winner, then keeps the strongest
+  candidate across both passes. Because the fine grid+ladder always include the
+  winner's own cell exactly (offset 0, factor 1.0) and a `max()` guard never lets
+  the refined inliers drop below the coarse best, the estimate can only match or
+  improve — never regress. Refinement runs ONLY on a locked coarse result and
+  carries the coarse lock decision + margin verbatim (it improves POSITION, it
+  does not re-litigate the gate), so a distant rival the margin already rejected
+  cannot be "refined" into a lock. API: `coarse = search_localize(...)` then
+  `refine_localize(frame, coarse, matcher, fetch_tile)`; pass the same `TileCache`
+  to both so the overlapping coarse cell is a cache hit. The `search_localize`
+  scoring loop and gate were factored into `_search_cells` / `_pick_best` /
+  `_finalize` (coarse behaviour byte-for-byte unchanged — all prior tests green).
+  Measured on a deterministic off-grid sim (truth 28 m from the nearest 60 m
+  coarse cell): coarse estimate **~28 m -> ~3 m** after a 20 m fine grid; verified
+  end-to-end with the real SIFT pipeline (lock preserved, no regression). Best
+  paired with W1 (RoMA's dense matches make the finer scales pay off most).
+
 ## Already done (maps to Adrian's asks)
 Sharded + integrity-verified ingestion; DJI-telemetry GT; coordinate fix
 (Spain); multi-source imagery (Esri/PNOA/Google/GEE); SIFT/LoFTR/RoMA implemented

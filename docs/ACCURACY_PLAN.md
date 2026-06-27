@@ -62,6 +62,23 @@ Adrian: run multiple algorithms, let the framework pick the best per context.
 - RoMA already mitigates this (LoFTR misreads terrain slope as camera pitch — Adrian).
 - Avoid nadir assumptions in code; a 2-3 deg pitch is fine with a wide FOV. Defer
   heavy 3D/DEM correction (out of scope for 6 days).
+- **DONE — full camera-geometry pose / oblique-tilt correction**
+  (`localize/pipeline.py`, `tests/test_camera_geometry.py`): the old pose projected
+  the frame CENTRE through H and reported that ground point — the BORESIGHT (where
+  the optical axis hits the ground), which equals the drone's nadir only for a
+  perfectly straight-down camera. An oblique frame offsets the nadir from the
+  boresight by ~`altitude*tan(tilt)`. New `decompose_ground_homography(G, K)`
+  decomposes the planar homography into a full camera pose (`K [r1 r2 t]` ->
+  rotation + camera centre over the ground plane), so `pose_from_homography(...,
+  intrinsics)` now reports the **nadir** (the drone's true map position) and also
+  fills `tilt_deg` + `altitude_m`. API: `intrinsics` is an optional last arg on
+  `pose_from_homography` / `localize_frame` / `search_localize`; when omitted the
+  behaviour is byte-for-byte the boresight projection (zero risk to sparse runs).
+  Uses the W5 focal (`focal_px` ~3713). Measured on analytic flight geometry
+  (90 m altitude): a 22 deg oblique that biases the boresight by **~36 m** is
+  corrected to the nadir to **< 1 m**; tilt/altitude recovered to <0.5 deg / <1 m.
+  Falls back to the boresight when the decomposition is singular or grazing
+  (tilt > 75 deg). Best paired with W1 (RoMA's tilt-tolerant matches feed it).
 
 ### W7 — Hybrid (map + VO) and heading constraint  [P2]
 - We have both pieces: VO (100% coverage) + satellite absolute anchors. Hybrid =

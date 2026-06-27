@@ -26,13 +26,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, TYPE_CHECKING
 
 import numpy as np
 
 from ..matching.base import Matcher
 from ..reference.geo import GeoImage, lonlat_to_mercator, mercator_to_lonlat
 from .pipeline import PoseEstimate, localize_frame
+
+if TYPE_CHECKING:  # import-only type; runtime stays duck-typed to avoid a cycle
+    from ..framework.schema import CameraIntrinsics
 
 # (lat, lon, span_m, pixels) -> GeoImage. A provider.fetch, a TileCache, or a test stub.
 FetchTile = Callable[[float, float, float, int], GeoImage]
@@ -121,6 +124,7 @@ def search_localize(
     min_inliers_lock: int = 20,
     lock_margin_ratio: float = 1.0,
     margin_separation_m: float | None = None,
+    intrinsics: CameraIntrinsics | None = None,
 ) -> SearchResult:
     """Localize one frame by trying every grid centre × tile span and keeping the
     candidate with the most RANSAC inliers (ties: first encountered, so the order
@@ -136,14 +140,18 @@ def search_localize(
       one. `lock_margin_ratio=1.0` (default) makes this gate inert, preserving
       sparse-matcher behaviour. A rival counts only if its centre is at least
       `margin_separation_m` away (defaults to 1.5 x grid_step_m, so the immediate
-      8-neighbour ring of the peak is not mistaken for a competitor)."""
+      8-neighbour ring of the peak is not mistaken for a competitor).
+
+    When `intrinsics` is supplied each candidate pose is tilt-corrected to the
+    drone's nadir (see `pose_from_homography`) instead of the boresight ground
+    point; the search ranking (inlier count) is unaffected."""
     candidates: list[Candidate] = []
     best: Candidate | None = None
     for lat, lon in grid_centers(prior_lat, prior_lon, search_radius_m, grid_step_m):
         for span in scales_m:
             try:
                 tile = fetch_tile(lat, lon, span, pixels)
-                pose, _ = localize_frame(frame_bgr, tile, matcher)
+                pose, _ = localize_frame(frame_bgr, tile, matcher, intrinsics)
             except ImportError:
                 # Missing matcher dependency (e.g. torch/kornia for LoFTR) is a
                 # setup error, not a bad tile — surface it loudly instead of

@@ -2,6 +2,10 @@
 
 Capstone Project · **IE × Dronomy**
 
+> 📊 **Poster / presentation team:** see [`STATUS.md`](STATUS.md) for the current,
+> verified accuracy numbers and what changed since the 23 June draft — use those,
+> not older figures.
+
 Estimate a drone's **absolute pose** (latitude, longitude, and heading) from
 **nadir (bottom-looking) video alone**, by matching each frame to a
 **georeferenced satellite image** — no GPS, no markers, no environment alteration.

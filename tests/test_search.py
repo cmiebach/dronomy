@@ -14,7 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from dronomy_loc.localize.search import (  # noqa: E402
-    TileCache, grid_centers, search_localize,
+    TileCache, grid_centers, refine_localize, search_localize,
 )
 from dronomy_loc.matching.base import Matcher, MatchResult  # noqa: E402
 from dronomy_loc.matching.classical import ClassicalMatcher  # noqa: E402
@@ -160,6 +160,190 @@ class _StubMatcher(Matcher):
     def match(self, drone_bgr, ref_rgb) -> MatchResult:
         pts = np.tile(np.float32([[10, 10], [100, 10], [10, 100], [100, 100]]), (6, 1))
         return MatchResult(pts, pts, np.eye(3), np.ones(len(pts), bool), len(pts))
+
+
+# ── (6) relative-margin lock gate (the RoMA / dense-matcher gate) ──────
+class _DenseStub(Matcher):
+    """Mimics a DENSE matcher: returns an identity-homography 'match' with an
+    inlier count baked into the ref tile's pixel [0,0,0]. Dense matchers score
+    high inliers on EVERY tile, so the number — not its mere presence — is what
+    a real lock has to defend via the margin gate."""
+    def match(self, drone_bgr, ref_rgb) -> MatchResult:
+        n = max(int(ref_rgb[0, 0, 0]), 1)
+        pts = np.zeros((n, 2), np.float32)
+        return MatchResult(pts, pts, np.eye(3), np.ones(n, bool), n)
+
+
+def make_scored_fetch(score_fn):
+    """Tile geometry from a blank world (so an identity-H pose lands on the tile
+    centre), with `score_fn(lat, lon)` baked into pixel [0,0,0] as the inlier
+    count `_DenseStub` will report for that tile."""
+    base = make_fetch(make_world(blank=True))
+
+    def fetch(lat, lon, span_m, pixels):
+        tile = base(lat, lon, span_m, pixels)
+        img = tile.image.copy()
+        img[0, 0, 0] = int(np.clip(score_fn(lat, lon), 0, 255))
+        return GeoImage(image=img, bbox=tile.bbox)
+    return fetch
+
+
+def _cell_score(lat, lon, *, peak, neighbor, distant):
+    """Score by mercator distance from the prior: the peak cell, its near ring,
+    or a far-away alternative hypothesis."""
+    cx, cy = lonlat_to_mercator(LON, LAT)
+    x, y = lonlat_to_mercator(lon, lat)
+    d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+    if d < 1.0:
+        return peak
+    if d < 90.0:
+        return neighbor
+    return distant
+
+
+# A 640x640 frame + pixels=640 => identity-H pose maps the frame centre onto the
+# tile centre, so each candidate's estimate sits exactly on its grid centre and
+# separations equal the grid geometry.
+_FRAME = np.zeros((640, 640, 3), np.uint8)
+_GRID = dict(search_radius_m=120.0, grid_step_m=60.0, scales_m=(80.0,), pixels=640)
+
+
+def test_margin_gate_rejects_confident_wrong_lock():
+    # Peak only 10% above distant rivals: a dense matcher would lock confidently,
+    # but the margin says the hypothesis is not separable -> must NOT lock.
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=110, neighbor=100, distant=100))
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                          lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert res.best.n_inliers == 110            # absolute gate (>=20) passes
+    assert res.runner_up is not None and res.runner_up.n_inliers == 100
+    assert abs(res.margin_ratio - 1.1) < 1e-6
+    assert not res.locked                       # margin gate vetoes it
+    # Same search WITHOUT the margin gate would have locked (the old behaviour).
+    inert = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                            lock_margin_ratio=1.0, margin_separation_m=90.0, **_GRID)
+    assert inert.locked
+
+
+def test_margin_gate_locks_dominant_peak():
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=200, neighbor=100, distant=100))
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                          lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert res.locked
+    assert res.best.n_inliers == 200
+    assert abs(res.margin_ratio - 2.0) < 1e-6
+    # The winning estimate sits on the prior (the peak cell).
+    assert haversine_m(LAT, LON, res.best.pose.lat, res.best.pose.lon) < 5.0
+
+
+def test_runner_up_excludes_same_peak_neighbours():
+    # A single dominant peak (200) with an elevated shoulder ring (170) and far
+    # cells at 100. With a real separation the shoulder is not a rival, so the
+    # peak beats the distant 100 by 2.0 and locks. Drop the separation to 0 and
+    # the 170 shoulder becomes the rival (200/170 = 1.18 < 1.3) -> no lock:
+    # proves the separation is what stops a peak shadowing itself.
+    fetch = make_scored_fetch(lambda la, lo: _cell_score(
+        la, lo, peak=200, neighbor=170, distant=100))
+    locked = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                             lock_margin_ratio=1.3, margin_separation_m=90.0, **_GRID)
+    assert locked.locked
+    assert abs(locked.margin_ratio - 2.0) < 1e-6   # rival is a distant 100 cell
+    leaky = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch,
+                            lock_margin_ratio=1.3, margin_separation_m=0.0, **_GRID)
+    assert not leaky.locked
+    assert abs(leaky.margin_ratio - 200 / 170) < 1e-6   # rival is the 170 shoulder
+
+
+def test_margin_gate_inert_by_default():
+    # Default ratio 1.0 keeps the sparse-matcher behaviour: a uniformly-confident
+    # field still locks (absolute gate only), margin reported but not enforced.
+    fetch = make_scored_fetch(lambda la, lo: 100)
+    res = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch, **_GRID)
+    assert res.locked
+    assert abs(res.margin_ratio - 1.0) < 1e-6
+
+
+# ── (7) coarse-to-fine refinement tightens the estimate ───────────────
+def _scored_by_distance(true_dx, true_dy, *, peak=250.0, decay=2.0, floor=30.0):
+    """Inlier score peaking at the point `(true_dx, true_dy)` metres (mercator)
+    from the prior, decaying linearly with distance: a deterministic stand-in for
+    'this tile centre is close to the true ground point'. Baked into pixel
+    [0,0,0] by `make_scored_fetch` and read back by `_DenseStub`."""
+    cx, cy = lonlat_to_mercator(LON, LAT)
+    tx, ty = cx + true_dx, cy + true_dy
+
+    def fn(lat, lon):
+        x, y = lonlat_to_mercator(lon, lat)
+        d = ((x - tx) ** 2 + (y - ty) ** 2) ** 0.5
+        return max(peak - decay * d, floor)
+    return fn
+
+
+def _true_lonlat(true_dx, true_dy):
+    cx, cy = lonlat_to_mercator(LON, LAT)
+    lon, lat = mercator_to_lonlat(cx + true_dx, cy + true_dy)
+    return lat, lon
+
+
+def test_refine_tightens_offgrid_estimate():
+    # Truth sits at (22, 18) m — between coarse 60 m grid cells, so the coarse
+    # winner is the prior cell ~28 m off. A fine 20 m grid around it lands a cell
+    # ~3 m from truth: refinement must cut the error without losing the lock.
+    true_lat, true_lon = _true_lonlat(22.0, 18.0)
+    fetch = make_scored_fetch(_scored_by_distance(22.0, 18.0))
+    coarse = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch, **_GRID)
+    assert coarse.locked
+    coarse_err = haversine_m(true_lat, true_lon,
+                             coarse.best.pose.lat, coarse.best.pose.lon)
+
+    refined = refine_localize(_FRAME, coarse, _DenseStub(), fetch,
+                              refine_radius_m=40.0, refine_step_m=20.0,
+                              scale_factors=(1.0,))
+    fine_err = haversine_m(true_lat, true_lon,
+                           refined.best.pose.lat, refined.best.pose.lon)
+    assert refined.locked
+    assert coarse_err > 20.0                 # coarse grid cannot reach the truth
+    assert fine_err < 5.0                     # fine grid does
+    assert fine_err < coarse_err
+    assert refined.best.n_inliers >= coarse.best.n_inliers   # never regress
+    # The lock decision/margin are carried over verbatim, not recomputed.
+    assert refined.margin_ratio == coarse.margin_ratio
+    assert refined.runner_up is coarse.runner_up
+    # Union of both passes is kept for inspection.
+    assert len(refined.candidates) > len(coarse.candidates)
+
+
+def test_refine_skips_unlocked_coarse_result():
+    # A uniformly weak field (10 inliers everywhere) never locks; refining it
+    # would just relocate noise, so the coarse result is returned untouched.
+    fetch = make_scored_fetch(lambda la, lo: 10)
+    coarse = search_localize(_FRAME, LAT, LON, _DenseStub(), fetch, **_GRID)
+    assert not coarse.locked
+    refined = refine_localize(_FRAME, coarse, _DenseStub(), fetch)
+    assert refined is coarse                  # same object, no fine pass run
+
+
+def test_refine_preserves_real_matcher_lock(world):
+    # End-to-end with the real SIFT pipeline (not the stub): refinement must keep
+    # the lock and never score below the coarse best (the max() guard), even
+    # though RANSAC's RNG state differs on the re-matched tiles.
+    cv2.setRNGSeed(42)
+    gt_lat, gt_lon = gt_point()
+    frame = make_frame(world, gt_lat, gt_lon, span_m=80.0, size=512, rot_deg=25.0)
+    fetch = TileCache(make_fetch(world))
+    kw = dict(search_radius_m=60.0, grid_step_m=60.0,
+              scales_m=(60.0, 80.0, 100.0), pixels=640)
+    coarse = search_localize(frame, LAT, LON, ClassicalMatcher(), fetch, **kw)
+    assert coarse.locked
+    refined = refine_localize(frame, coarse, ClassicalMatcher(), fetch)
+    assert refined.locked
+    assert refined.best.n_inliers >= coarse.best.n_inliers
+    coarse_err = haversine_m(gt_lat, gt_lon,
+                             coarse.best.pose.lat, coarse.best.pose.lon)
+    fine_err = haversine_m(gt_lat, gt_lon,
+                           refined.best.pose.lat, refined.best.pose.lon)
+    assert fine_err <= coarse_err + 2.0       # never meaningfully regress
 
 
 def test_one_bad_tile_fetch_does_not_kill_search():

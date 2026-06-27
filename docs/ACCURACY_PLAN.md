@@ -62,6 +62,23 @@ Adrian: run multiple algorithms, let the framework pick the best per context.
 - RoMA already mitigates this (LoFTR misreads terrain slope as camera pitch — Adrian).
 - Avoid nadir assumptions in code; a 2-3 deg pitch is fine with a wide FOV. Defer
   heavy 3D/DEM correction (out of scope for 6 days).
+- **DONE — full camera-geometry pose / oblique-tilt correction**
+  (`localize/pipeline.py`, `tests/test_camera_geometry.py`): the old pose projected
+  the frame CENTRE through H and reported that ground point — the BORESIGHT (where
+  the optical axis hits the ground), which equals the drone's nadir only for a
+  perfectly straight-down camera. An oblique frame offsets the nadir from the
+  boresight by ~`altitude*tan(tilt)`. New `decompose_ground_homography(G, K)`
+  decomposes the planar homography into a full camera pose (`K [r1 r2 t]` ->
+  rotation + camera centre over the ground plane), so `pose_from_homography(...,
+  intrinsics)` now reports the **nadir** (the drone's true map position) and also
+  fills `tilt_deg` + `altitude_m`. API: `intrinsics` is an optional last arg on
+  `pose_from_homography` / `localize_frame` / `search_localize`; when omitted the
+  behaviour is byte-for-byte the boresight projection (zero risk to sparse runs).
+  Uses the W5 focal (`focal_px` ~3713). Measured on analytic flight geometry
+  (90 m altitude): a 22 deg oblique that biases the boresight by **~36 m** is
+  corrected to the nadir to **< 1 m**; tilt/altitude recovered to <0.5 deg / <1 m.
+  Falls back to the boresight when the decomposition is singular or grazing
+  (tilt > 75 deg). Best paired with W1 (RoMA's tilt-tolerant matches feed it).
 
 ### W7 — Hybrid (map + VO) and heading constraint  [P2]
 - We have both pieces: VO (100% coverage) + satellite absolute anchors. Hybrid =
@@ -82,6 +99,31 @@ Adrian: run multiple algorithms, let the framework pick the best per context.
 ### W8 — Feature-stability evaluation  [P3]
 - Prefer rivers/terrain/rocks; treat roads/construction as unreliable. Mostly an
   eval/reporting lens for the non-urban target environment.
+
+### W9 — Coarse-to-fine search refinement  [P1, precision lever]
+- **DONE — `refine_localize(frame, coarse, matcher, fetch_tile, ...)`**
+  (`localize/search.py`, `tests/test_search.py`): a second FINE pass over a
+  confirmed lock. `search_localize` is deliberately COARSE (60 m grid step,
+  wide scale ladder) so the truth is never missed — but that leaves the estimate
+  up to half a grid step off and the tile span up to a ladder gap from the true
+  footprint. `refine_localize` re-searches a tight grid (default step ¼ of the
+  winner's span over ±½-span) crossed with a finer scale ladder (`scale_factors`
+  × the winner's span) centred on the coarse winner, then keeps the strongest
+  candidate across both passes. Because the fine grid+ladder always include the
+  winner's own cell exactly (offset 0, factor 1.0) and a `max()` guard never lets
+  the refined inliers drop below the coarse best, the estimate can only match or
+  improve — never regress. Refinement runs ONLY on a locked coarse result and
+  carries the coarse lock decision + margin verbatim (it improves POSITION, it
+  does not re-litigate the gate), so a distant rival the margin already rejected
+  cannot be "refined" into a lock. API: `coarse = search_localize(...)` then
+  `refine_localize(frame, coarse, matcher, fetch_tile)`; pass the same `TileCache`
+  to both so the overlapping coarse cell is a cache hit. The `search_localize`
+  scoring loop and gate were factored into `_search_cells` / `_pick_best` /
+  `_finalize` (coarse behaviour byte-for-byte unchanged — all prior tests green).
+  Measured on a deterministic off-grid sim (truth 28 m from the nearest 60 m
+  coarse cell): coarse estimate **~28 m -> ~3 m** after a 20 m fine grid; verified
+  end-to-end with the real SIFT pipeline (lock preserved, no regression). Best
+  paired with W1 (RoMA's dense matches make the finer scales pay off most).
 
 ## Already done (maps to Adrian's asks)
 Sharded + integrity-verified ingestion; DJI-telemetry GT; coordinate fix

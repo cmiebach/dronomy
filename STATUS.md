@@ -1,70 +1,78 @@
-# Project status — for the poster & presentation team
+# Project status — for the report / poster / presentation team
 
-**Last updated: 2026-06-27** · Single source of truth for numbers and structure.
-If a number is not in this file, do not put it on the poster — ask first.
+**Last updated: 2026-06-27** · Single source of truth for numbers + framework state.
+Use the numbers in this file. If a figure isn't here, ask before putting it on the poster.
 
-This exists so the poster/slides never carry outdated figures. The written
-report (local only, not on GitHub) is being updated to match this; the sections
-below mirror what the report will say.
+> ⏳ **One result still coming:** the *blind* RoMA numbers from the cloud GPU run
+> are being generated now and will be appended here. Everything else below is final.
 
 ---
 
-## 1. Headline numbers — CONFIRMED REAL (safe to use)
+## 1. What the system is (one paragraph for the intro)
+A **telemetry-free, modular framework** that localizes a drone from its downward
+camera alone, by matching each video frame to georeferenced satellite imagery —
+no GPS at runtime (GPS is used only to *score*). Matchers (SIFT / LoFTR / RoMA)
+and imagery providers (PNOA / Esri / Google / GEE) are interchangeable behind one
+interface, and the framework **auto-selects the best matcher AND the best imagery
+source per frame**. One command runs the whole pipeline end-to-end.
 
-| Metric | Value | How measured |
+## 2. Headline numbers — CONFIRMED REAL (safe to use)
+
+| Capability | Result | How measured |
 |---|---|---|
-| Per-frame accuracy, LoFTR | **~1.8 m** on matchable (near-nadir) frames | real run, frame 6510 = 1.80 m (Apple-Silicon GPU/MPS) |
-| Per-frame accuracy, RoMA | **~1.5 m median** (best 0.7, worst 2.3) | real, 10 random frames (Docker GPU) |
-| Coverage, RoMA | **~100 %** of a random frame sample | real, 10/10 frames matched (Docker GPU) |
-| Coverage, LoFTR | low — only near-nadir frames (~6 %, refresh in progress) | older 35-frame scan; an updated GPU scan is running |
-| Tile disambiguation, RoMA | correct tile wins **6/6** (1.8–10.8× margin) | real (Docker GPU) |
-| Trajectory precision (shape-aligned RMSE) | **~12 m** (LoFTR anchors) to ~24 m (SIFT), **100 % coverage** | real, visual-odometry track |
-| Cross-dataset generality (NEW) | **11.3 m** on a UAV-VisLoc (region 03) frame, LoFTR | real, external dataset — first generality evidence |
-| Partner's benchmark | "~10 m across a range of videos = amazing" — we beat it on this clip | context |
-| Offline unit tests | **128** on `main` (deliverable) | CI green, Python 3.11 + 3.12 |
+| Per-frame accuracy (LoFTR, feature-rich frames) | **~1.8 m** (best), median 2.6 m | real, Apple-Silicon GPU (MPS) |
+| Coverage (LoFTR, blind grid over flight) | ~15 % of frames lock | real, 40-frame scan |
+| **Multi-source selection (PNOA+Esri)** | **100 % coverage on feature-rich frames; one frame 19 m → 5 m** | real, per-frame best-source |
+| RoMA (precision, tile near truth) | **~1.5 m median** (0.7–2.3), 10/10 frames | real (earlier GPU bench) — *blind cloud number pending* |
+| RoMA tile disambiguation | correct tile wins **6/6** (1.8–10.8×) | real |
+| Cross-dataset generality (UAV-VisLoc) | **11.3 m** on an external-dataset frame | real |
+| Trajectory (VO) | **0.6–2.6 m near absolute fixes**; drifts over long unanchored gaps | real |
+| Engineering | **149 offline tests, CI green** (Python 3.11 + 3.12) | — |
+| Partner benchmark | "~10 m across videos = amazing" — we beat it on matchable frames | context |
 
-**One-line framing (safe):** a *telemetry-free, modular framework* that matches
-drone frames to satellite imagery; RoMA lifts coverage from ~6 % to ~100 % at
-~1.5 m; a VO + fusion layer gives a 100 %-coverage, shape-faithful trajectory.
+## 3. Methods in the system (list these on the poster)
+Telemetry-free framework · pluggable matchers **SIFT / LoFTR / eLoFTR / RoMA** ·
+pluggable imagery providers **PNOA / Esri / Google / GEE** · grid search +
+confidence gate · **relative-margin lock gate** · **oblique-tilt pose
+correction** · **coarse-to-fine refinement** · **matcher auto-selection** ·
+**multi-source imagery selection** · visual odometry · **recursive fusion
+(Kalman + RTS)** · manual anchoring · trajectory shape metric · GeoJSON/KML
+export · multi-dataset adapters (provided video + UAV-VisLoc).
 
-## 2. Methods now in the system (use this list on the poster)
+## 4. Honest framing (so the defense holds up)
+- **Fully-automated, GPS-free accuracy is tens of metres**, not few-metre — this
+  is the real ceiling on this low-altitude/grassy/oblique flight, confirmed
+  independently (a peer group's blind automated RoMa was 65 m).
+- **Few-metre accuracy needs manual anchoring** (human-marked control points).
+  We implemented it, but chose a **fully-automated** system (no human in the loop)
+  as the cleaner, telemetry-true deliverable.
+- Our edge over a plain pipeline: **auto-selection of matcher AND imagery source,
+  plus VO+RoMA fusion** — designed to push the *automated* number below the 65 m
+  blind baseline. (Exact blind number: see the pending RoMA cloud run.)
+- The RoMA ~1.5 m figure is **precision given roughly the right tile**, not a blind
+  end-to-end result — report it as such.
 
-On `main` (the graded deliverable): telemetry-free framework (pluggable
-matchers SIFT/LoFTR/eLoFTR/RoMA + imagery providers), grid search + confidence
-gate, pose recovery, **visual odometry**, **recursive fusion filter (Kalman +
-RTS)**, **manual anchoring**, trajectory shape metric, multi-dataset adapters.
-
-Implemented + tested, **real-validation in progress** (do NOT quote final
-numbers yet — see §4): **relative-margin lock gate**, **oblique-tilt pose
-correction**, **coarse-to-fine refinement**.
-
-## 3. What CHANGED vs the old (23 June) report draft — fix these on the poster
-
-1. **Unit tests: 79 → 128** (deliverable). The old "79" is outdated.
-2. **New methods exist** that the old draft called "future"/"next step":
+## 5. What CHANGED since the 23 June draft (fix these)
+1. **Tests: 79 → 149.**
+2. New methods now exist (draft called them future): multi-source selection,
    fusion filter, manual anchoring, margin gate, tilt correction, coarse-to-fine.
-   Add them to the methods list.
-3. **Margin gate is DONE**, not "the immediate next step."
-4. **Cross-dataset generalization** — old draft said "not yet demonstrated."
-   We now have a real UAV-VisLoc data point (11.3 m). Soften that caveat.
-5. **LoFTR coverage %** may change slightly from ~6 % once the GPU scan finishes.
-6. **RoMA numbers are unchanged** (~1.5 m, ~100 %) — already real, safe to keep.
-7. **Report structure is stable** (Intro → Related work → Problem → Data →
-   Methodology → Alternatives → Engineering → Experiments → Discussion →
-   Ethics → Conclusion). The poster can mirror this section order; only the
-   *method list* and *numbers* above need updating.
+3. **Margin gate = done**, not "next step."
+4. Generalization now has **real evidence** (UAV-VisLoc 11.3 m) — soften "not demonstrated."
+5. Imagery: we use **PNOA (~0.15–0.25 m/px), higher-res than Esri**, and now
+   **select per frame** across sources.
 
-## 4. Still PENDING — do not put these on the poster as final
+## 6. How to run it (the single trigger for the evaluator)
+```bash
+python scripts/run_all.py --frames-dir <frames> --providers pnoa,esri --device cuda
+# -> per-method CSVs, auto_track.csv, track.geojson/.kml, comparison.png,
+#    flightpath.png, RESULTS.md   (RoMA runs where its deps exist; skipped gracefully otherwise)
+```
 
-- Real-data numbers for the fusion filter, tilt correction, and coarse-to-fine
-  (currently validated on simulation/analytic geometry; being re-run on the GPU).
-- An updated LoFTR coverage % from the in-progress scan.
-- Fresh RoMA numbers are NOT pending — the existing RoMA figures are real.
+## 7. Still PENDING (do not finalize on the poster yet)
+- **Blind RoMA numbers on cloud GPU** (running now) — will be appended to §2.
+- Final automated trajectory number from RoMA-anchored VO fusion.
 
-## 5. Git / branch state (so you know what's where)
-
-- **`main` (GitHub):** the complete working framework + fusion + manual
-  anchoring. 128 tests. This is the deliverable.
-- **`feature/accuracy-loop` (local, not yet pushed):** the three enhancements
-  in §2 (margin gate, tilt correction, coarse-to-fine). 144 tests.
-- The written **report stays local** (never pushed to GitHub).
+## 8. Branches
+- `main` — the working framework deliverable.
+- `feature/accuracy-loop` — this branch: all the above + tooling. (The written
+  **report stays local, never on GitHub**.)

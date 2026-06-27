@@ -169,6 +169,8 @@ def validate_frames(
     scales_m: tuple[float, ...] = (50.0, 80.0, 110.0, 140.0),
     pixels: int = 640,
     min_inliers_lock: int = 20,
+    lock_margin_ratio: float = 1.0,
+    margin_separation_m: float | None = None,
     on_row: Callable[[FrameScore], None] | None = None,
 ) -> ValidationSummary:
     """Run `search_localize` on every frame (sorted index order, deterministic)
@@ -186,6 +188,8 @@ def validate_frames(
             frames_by_idx[idx], prior_lat, prior_lon, matcher, fetch_tile,
             search_radius_m=search_radius_m, grid_step_m=grid_step_m,
             scales_m=scales_m, pixels=pixels, min_inliers_lock=min_inliers_lock,
+            lock_margin_ratio=lock_margin_ratio,
+            margin_separation_m=margin_separation_m,
         )
         runtime = time.perf_counter() - t0
         pose = res.best.pose if res.best is not None else None

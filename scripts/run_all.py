@@ -79,6 +79,8 @@ def main():
     ap.add_argument("--gps-track", default="data/gps_track.csv")
     ap.add_argument("--ref-dir", default="data/reference")
     ap.add_argument("--ref-name", default="world_pnoa")
+    ap.add_argument("--providers", default=None,
+                    help="comma list (e.g. pnoa,esri) -> per-frame best-source selection")
     ap.add_argument("--spread", type=int, default=20)
     ap.add_argument("--methods", default="sift,loftr,roma")
     ap.add_argument("--device", default="cpu", help="RoMA backend: cpu | cuda | mps")
@@ -104,8 +106,18 @@ def main():
     frames = load_frames(args, indices)
     if not frames:
         raise SystemExit("no frames loaded (check --frames-dir / --video)")
-    world = load_reference(args.ref_dir, args.ref_name)
-    fetch_tile = TileCache(make_world_fetch(world))
+    # one or several imagery providers (multi-source = per-frame best-source selection)
+    prov_names = [p.strip() for p in args.providers.split(",")] if args.providers else [None]
+    providers = {}
+    for p in prov_names:
+        name = p or args.ref_name.replace("world_", "")
+        cache = p and f"world_{p}" or args.ref_name
+        providers[name] = TileCache(make_world_fetch(load_reference(args.ref_dir, cache)))
+    multi = len(providers) > 1
+    fetch_tile = next(iter(providers.values()))
+    if multi:
+        from dronomy_loc.localize.multisource import validate_multisource
+        print(f"multi-source providers: {list(providers)}", flush=True)
 
     # --- run every method; a missing-deps method is skipped, not fatal ---
     summaries: dict[str, ValidationSummary] = {}
@@ -113,14 +125,22 @@ def main():
         print(f"\n=== {method} ===", flush=True)
         try:
             matcher = build_matcher(method, cfg, args.device)
-            summ = validate_frames(
-                frames, track, args.prior_lat, args.prior_lon, matcher, fetch_tile,
-                fps=args.fps, search_radius_m=args.radius, grid_step_m=args.step,
-                scales_m=scales, pixels=args.pixels, min_inliers_lock=args.min_inliers,
-                on_row=lambda r: print(f"  frame {r.frame} locked={int(r.locked)} "
-                                       f"inl={r.n_inliers} err={'' if r.err_m is None else round(r.err_m,1)}",
-                                       flush=True),
-            )
+            if multi:
+                summ, _ = validate_multisource(
+                    frames, track, args.prior_lat, args.prior_lon, matcher, providers,
+                    fps=args.fps, search_radius_m=args.radius, grid_step_m=args.step,
+                    scales_m=scales, pixels=args.pixels, min_inliers_lock=args.min_inliers,
+                    on_row=lambda r, name: print(f"  frame {r.frame} locked={int(r.locked)} "
+                                                 f"via={name} inl={r.n_inliers} "
+                                                 f"err={'' if r.err_m is None else round(r.err_m,1)}", flush=True))
+            else:
+                summ = validate_frames(
+                    frames, track, args.prior_lat, args.prior_lon, matcher, fetch_tile,
+                    fps=args.fps, search_radius_m=args.radius, grid_step_m=args.step,
+                    scales_m=scales, pixels=args.pixels, min_inliers_lock=args.min_inliers,
+                    on_row=lambda r: print(f"  frame {r.frame} locked={int(r.locked)} "
+                                           f"inl={r.n_inliers} err={'' if r.err_m is None else round(r.err_m,1)}",
+                                           flush=True))
             summaries[method] = summ
             write_validation_csv(summ, out / f"val_{method}.csv")
         except Exception as e:               # missing torch/imcui/romatch etc.

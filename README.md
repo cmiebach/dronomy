@@ -1,5 +1,8 @@
 # dronomy — GPS-denied drone visual localization
 
+> 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 Capstone Project · **IE × Dronomy**
 
 > 📊 **Poster / presentation team:** see [`STATUS.md`](STATUS.md) for the current,
@@ -117,7 +120,7 @@ Run tests: `pytest` (all offline — synthetic videos, mocked network; no torch 
 - [x] Single-scale grid (telemetry-informed): same lock outcome, 1.8× faster
 - [x] Validation harness (scripts/07) + ACCURACY_LOG.md
 - [x] VO dead-reckoning full-trajectory run (scripts/08): **100% coverage**
-      (median 12.3 m, 1.6 m near anchors) vs the ~6% per-frame-matching ceiling
+      (median 12.3 m, 1.6 m near anchors) vs the per-frame-matching ceiling (~15% on the updated GPU scan)
 - [ ] Densify anchors; appearance-gap experiments (PLAN.md §3b); 35-stop scan
 - [ ] Report + presentation; lock meeting with Adrian
 

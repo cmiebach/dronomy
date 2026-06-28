@@ -1,5 +1,8 @@
 # Post-meeting plan — Adrian sync 2026-06-23
 
+> 📊 **Canonical numbers: see [`STATUS.md`](../STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 Turning Adrian's guidance into a prioritized implementation plan. Source: the
 2026-06-23 meeting notes.
 

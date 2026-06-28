@@ -3,12 +3,12 @@
 **Last updated: 2026-06-27** · Single source of truth for numbers + framework state.
 Use the numbers in this file. If a figure isn't here, ask before putting it on the poster.
 
-> **RoMA note:** RoMA is verified working on a cloud GPU (a direct cross-frame
-> match produced ~5000 inliers). Its localization accuracy is reported below as a
-> *precision* number (~1.5 m). A *blind full-grid* RoMA run over the whole flight
-> was attempted on the cloud GPU but hit a pipeline-integration stall on that box;
-> blind RoMA coverage at scale is also compute-heavy (RoMA is GPU-only and dense).
-> So RoMA is reported via its precision numbers, not a blind end-to-end figure.
+> **RoMA note:** RoMA runs **natively on the Apple-Silicon GPU (MPS)** — no Docker
+> needed. The **full-video blind run completed**: RoMA selected on all 28/28 anchors,
+> chained over the whole video → **median 7.4 m, 55 % within 15 m, GPS-free** (mean
+> 76 m — a few anchors lock the wrong tile confidently; the median is robust). Two
+> distinct RoMA numbers, don't conflate them: **~1.5 m is *precision* given the right
+> tile**; **~7.4 m (median) is the *blind* whole-video result.**
 
 ---
 
@@ -24,11 +24,13 @@ source per frame**. One command runs the whole pipeline end-to-end.
 
 | Capability | Result | How measured |
 |---|---|---|
+| **Full-video pipeline (RoMA per-frame, blind)** | **median 7.4 m · 55 % within 15 m · 28/28 anchors** | real, WHOLE video, GPS-free (mean 76 m — a few wrong-tile anchors; median is robust) |
 | Per-frame accuracy (LoFTR, feature-rich frames) | **~1.8 m** (best), median 2.6 m | real, Apple-Silicon GPU (MPS) |
 | Coverage (LoFTR, blind grid over flight) | ~15 % of frames lock | real, 40-frame scan |
 | **Multi-source selection (PNOA+Esri)** | **100 % coverage on feature-rich frames; one frame 19 m → 5 m** | real, per-frame best-source |
-| RoMA (precision, tile near truth) | **~1.5 m median** (0.7–2.3), 10/10 frames | real GPU bench — *precision given a good prior; blind full-grid not completed (infra)* |
+| RoMA per-frame coverage / precision | **100 % matched (10/10); ~1.5 m** given the right tile | real GPU bench — *that 1.5 m is precision given a good prior, NOT blind* |
 | RoMA tile disambiguation | correct tile wins **6/6** (1.8–10.8×) | real |
+| VO flight path (shape) | **~24 m shape-aligned RMSE**, 457 frames, continuous | real, GPS-free (clean figure: `docs/figures/flight_path_vs_gt.png`) |
 | Cross-dataset generality (UAV-VisLoc) | **11.3 m** on an external-dataset frame | real |
 | Trajectory (VO) | **0.6–2.6 m near absolute fixes**; drifts over long unanchored gaps | real |
 | Engineering | **149 offline tests, CI green** (Python 3.11 + 3.12) | — |
@@ -49,11 +51,11 @@ export · multi-dataset adapters (provided video + UAV-VisLoc).
 - **Few-metre accuracy needs manual anchoring** (human-marked control points).
   We implemented it, but chose a **fully-automated** system (no human in the loop)
   as the cleaner, telemetry-true deliverable.
-- Our edge over a plain pipeline: **auto-selection of matcher AND imagery source,
-  plus VO+RoMA fusion** — designed to push the *automated* number down.
-  (Blind full-grid RoMA was not completed on cloud — see the RoMA note up top.)
-- The RoMA ~1.5 m figure is **precision given roughly the right tile**, not a blind
-  end-to-end result — report it as such.
+- Our edge over a plain pipeline: **auto-selection of matcher AND imagery source**.
+  The blind whole-video RoMA pipeline reaches **median 7.4 m** — strong for a
+  fully-automated, GPS-free result (a few wrong-tile anchors pull the mean up).
+- Keep the two RoMA numbers distinct: **~1.5 m = precision** given the right tile;
+  **~7.4 m median = blind** whole-video localization. Don't present 1.5 m as blind.
 
 ## 5. What CHANGED since the 23 June draft (fix these)
 1. **Tests: 79 → 149.**
@@ -71,11 +73,11 @@ python scripts/run_all.py --frames-dir <frames> --providers pnoa,esri --device c
 #    flightpath.png, RESULTS.md   (RoMA runs where its deps exist; skipped gracefully otherwise)
 ```
 
-## 7. Status of optional extras (not blockers)
-- **Blind full-grid RoMA on cloud:** attempted, hit a pipeline-integration stall
-  on the GPU box; RoMA is reported via its precision numbers (§2) + the working
-  direct-match proof. Not required for the deliverable.
-- A RoMA-anchored VO fusion number would be a future improvement.
+## 7. Status of optional extras
+- **Blind full-video RoMA: DONE** natively on the Mac GPU (MPS) — median 7.4 m
+  (figure: `docs/figures/full_flight_path_roma.png`). The figure has a few spike
+  artifacts from wrong-tile anchors; a margin-gated re-run would clean it.
+- Cleaner RoMA figure (margin gate to drop wrong-tile anchors) = nice-to-have.
 
 ## 8. Branches
 - `main` — the working framework deliverable.

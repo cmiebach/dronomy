@@ -1,5 +1,8 @@
 # Merge decision — diego vs caspar -> main
 
+> 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 Two independent solutions to the same capstone were compared head-to-head
 (2026-06-15) to decide what goes on `main`. The comparison was run as a blind,
 adversarial review (fresh agents read both branches; three judge lenses —

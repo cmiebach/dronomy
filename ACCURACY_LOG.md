@@ -1,5 +1,8 @@
 # Accuracy log — diego branch
 
+> 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 Chronological, measured record: one change per row, scored against the GPS
 ground truth (`data/gps_track.csv`, extracted from the DJI `djmd` stream —
 **scoring only, never a localizer input**). Same row format as the caspar

@@ -1,5 +1,8 @@
 # PLAN — match, then exceed, the caspar branch
 
+> 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 Updated: 2026-06-10. Roadmap for this branch (`dronomy_loc`) against
 `origin/feature/caspar`. Shared facts both branches agree on: true location is
 **Asturias, Spain (43.521955, −5.624290)** — the filename dropped the minus;

@@ -1,129 +1,83 @@
-# dronomy — GPS-denied drone visual localization
+# Dronomy: Telemetry Free Visual Localization of Drones in GNSS Denied Environments
 
-Capstone Project · **IE × Dronomy**
+IE University capstone project, in partnership with Dronomy. Group 3: Aylin Yasgul, Caspar Miebach, Diego Alfaro, Yi Long, Alessandro Cristofolini.
 
-> 📊 **All numbers — accuracy, coverage, tests — live in [`STATUS.md`](STATUS.md), the single source of truth.**
-> This README covers what the system is, how it's laid out, and how to run it.
+> All headline numbers in this document mirror [`STATUS.md`](STATUS.md), which is the single source of truth. If a figure is not in STATUS.md, do not put it on the poster or in the report.
 
-Estimate a drone's **absolute pose** (latitude, longitude, and heading) from
-**nadir (bottom-looking) video alone**, by matching each frame to a
-**georeferenced satellite image** — no GPS, no markers, no environment alteration.
+## Abstract
 
-## The challenge
-Given a satellite map of the flight area and aerial frames from a drone, estimate
-components of the drone pose w.r.t. the map. Pipeline:
+Most drones rely on the Global Navigation Satellite System for positioning, yet that signal is unavailable, degraded, or jammed in many real settings, from the move between indoor and outdoor flight to dense terrain, urban canyons, and contested airspace. This project presents a telemetry free system that estimates a drone's absolute position, latitude and longitude, and optionally its heading, from a downward looking camera alone, by matching each video frame to a georeferenced satellite map. No GPS is read at runtime. The contribution is not a single tuned solution but a generic, modular framework: matchers and imagery providers are interchangeable behind stable interfaces, and the same pipeline runs unchanged across terrains and datasets. On the provided drone flight over Asturias in Spain, the blind whole video pipeline reaches a median error of 7.4 m fully GPS free, individual feature rich frames localize to about 1.8 m, and the identical code generalizes to an external dataset frame in China. These results sit well inside the partner benchmark of about 10 m across videos.
 
-```
- drone frame ──► [matching] ──► frame↔reference homography ─┐
- satellite tile (georeferenced) ───────────────────────────┴─► (lat, lon, yaw)
-```
+## 1. The problem
 
-Required: (1) auto-fetch a recent satellite image, (2) match frames to a
-georeferenced reference, (3) output absolute position/orientation.
-Bonus: visual odometry + fusion.
+Outdoor autonomy almost always depends on GNSS, which is a single point of failure: the signal is weak near structures and terrain, can be degraded by multipath, and can be deliberately jammed or spoofed. Indoor autonomy avoids GNSS but usually alters the environment with markers or beacons. The partner, Dronomy, builds GPS denied autonomy that does not alter the flight area, and this project extends that idea to the outdoor setting.
 
-## Run it end-to-end (one command)
-A fresh clone needs nothing staged — `run_e2e.py` downloads the flight video,
-shards it, extracts the GPS ground truth, fetches reference imagery, then
-localizes (each stage is idempotent and independently `--skip`-able):
+The core observation is simple. A downward looking camera over open terrain sees the same ground that a satellite sees from above. If a drone frame can be matched reliably to a georeferenced satellite map, the drone's absolute position can be read off directly, with no GNSS, no markers, and no change to the environment. The difficulty is that the two images come from different sensors, times, seasons, resolutions, and viewing angles. Bridging that appearance gap robustly is the heart of the work.
+
+## 2. Approach
+
+The system is a configuration driven package, `dronomy_loc`, built so that swapping the matcher or the imagery provider requires no change elsewhere. That interchangeability is what makes it a framework rather than a one off, and it is the lever for generality. The pipeline is:
+
+ingest video, extract and verify frames, fetch a georeferenced reference tile, match frame to map, estimate a homography, recover pose as latitude, longitude, heading, and scale, search a grid of candidates with a confidence gate, score against the GPS track, and optionally fuse with visual odometry.
+
+Three design choices carry most of the weight:
+
+* **Pluggable matchers.** SIFT is a fast classical baseline. LoFTR is a detector free transformer that is strong on low texture. RoMA, a dense matcher trained for cross modality, is the lever that lifts coverage across the appearance gap. The framework selects the best matcher per frame.
+* **Pluggable imagery.** Esri World Imagery is keyless and global. Spanish IGN PNOA orthophoto is the highest resolution source over the true flight area at 0.15 to 0.25 m per pixel. Google Earth Engine provides Sentinel 2. The framework selects the best source per frame.
+* **Trust before coverage.** A fix is accepted only with at least twenty deep matcher inliers, filtered by a relative margin gate so a dense matcher cannot lock confidently onto the wrong tile. Visual odometry then chains from confirmed matches to cover frames the map cannot match directly.
+
+The drone's own GPS is used only to score error, never as an input. The system stays telemetry free by design.
+
+## 3. Results
+
+The canonical table lives in [`STATUS.md`](STATUS.md). In summary:
+
+* **Blind whole video pipeline, the headline:** median 7.4 m, 55 percent of frames within 15 m, RoMA selected on all 28 of 28 anchors, fully GPS free.
+* **Single frame accuracy:** LoFTR locks at 1.76 to 1.80 m where the scene has texture, RoMA reaches about 1.5 m median precision given a roughly correct tile, over a 0.7 to 2.3 m range across 10 of 10 frames.
+* **Coverage:** about 15 percent of frames lock with a single blind matcher, and multi source selection plus visual odometry raises coverage to 100 percent on feature rich frames.
+* **Generality:** the identical code localizes an external dataset frame in China to 11.3 m with LoFTR, a single config line apart from the Spain flight.
+* **Engineering:** 156 offline tests, continuous integration green on Python 3.11 and 3.12.
+
+The honest framing is that fully automated, GPS free accuracy is in the tens of metres on this low altitude, grassy, oblique flight, and few metre accuracy is reached where the scene has texture. Because deep matchers and the geometric estimator are stochastic, individual figures vary by about plus or minus 10 m on re execution.
+
+## 4. How to run it
+
+A fresh clone needs nothing staged. One command downloads the flight video, shards it, extracts the GPS ground truth, fetches reference imagery, and localizes.
+
 ```bash
 pip install -e ".[dev]"
-python scripts/run_e2e.py        # fetch video → ingest/shard → GPS → reference → localize
-# → data/outputs/run_all/RESULTS.md  (per-method CSVs, auto_track, track.geojson/.kml, figures)
+python scripts/run_e2e.py
 ```
-Or run just the localizer when the data is already present:
+
+This writes `data/outputs/run_all/RESULTS.md` with per method tables, the auto selected track, GeoJSON and KML exports, and figures. To run only the localizer once the data is present:
+
 ```bash
 python scripts/run_all.py --providers pnoa,esri --methods sift,loftr,roma --device cuda
 ```
-LoFTR needs `torch`+`kornia`; RoMA needs a CUDA GPU (see
-[`docs/LOCAL_GPU_MATCHANYTHING.md`](docs/LOCAL_GPU_MATCHANYTHING.md)) — both skip
-gracefully if their deps are absent. **Numbers: [`STATUS.md`](STATUS.md).**
 
-## Repository layout
+LoFTR needs torch and kornia. RoMA needs a CUDA GPU, with setup in [`docs/LOCAL_GPU_MATCHANYTHING.md`](docs/LOCAL_GPU_MATCHANYTHING.md). Both skip gracefully when their dependencies are absent. The full offline test suite runs with `pytest`, with no network, GPU, or video required.
+
+## 5. Repository structure
+
 ```
-config/config.yaml          Central configuration (paths, provider, matcher, RANSAC)
+config/config.yaml            central configuration, paths, provider, matcher, search
 src/dronomy_loc/
-  data/        frames.py     Video reading & frame extraction, blur filter (OpenCV)
-               ingest.py     Sharded, resumable, integrity-verified video ingestion
-               telemetry.py  DJI djmd GPS track via exiftool (GROUND TRUTH only)
-  reference/   geo.py        Web-Mercator math + GeoImage (pixel ↔ lat/lon)
-               base.py       Provider interface + factory
-               esri.py       Esri World Imagery (keyless, global, DEFAULT)
-               pnoa.py       Spanish IGN PNOA orthophoto (keyless, ~0.15 m/px here)
-               gee.py        Google Earth Engine map tiles (needs auth)
-               ign.py        French IGN orthophotos (legacy — flight is in Spain)
-               store.py      Save/load fetched reference tiles
-  matching/    base.py       Matcher interface + RANSAC homography
-               classical.py  SIFT / ORB / AKAZE baseline
-               deep.py       LoFTR via kornia (deep matcher)
-  localize/    pipeline.py   Homography → (lat, lon, yaw, scale)
-               search.py     Grid-of-centres × multi-scale search + ≥20-inlier lock gate
-               validate.py   Multi-frame validation harness vs the GPS track
-               odometry.py   VO dead-reckoning: chain homographies from anchor frames
-  viz/         overlay.py    Match overlays, footprint, trajectory plot
-scripts/       01..08        Runnable "small working pieces" (see below)
-tests/         test_*.py     offline tests: geo, ingest, telemetry, providers, search, validate, VO, fetch
-docs/                        Literature review + report outline
-data/                        Generated artifacts (git-ignored)
+  data/                       video reading, sharded ingestion, DJI GPS via exiftool
+  reference/                  Web Mercator geo math, provider interface, Esri, PNOA, GEE
+  matching/                   SIFT, LoFTR, and the MatchAnything RoMA backend
+  localize/                   homography to pose, grid search, validation, odometry, fusion
+  eval/                       field metrics, recall at threshold, best model selection
+  export/                     GeoJSON and KML track export
+scripts/                      numbered steps plus run_e2e.py and run_all.py entrypoints
+tests/                        offline tests, synthetic videos, mocked network
+data/                         generated artifacts, git ignored
 ```
 
-## Setup
-```bash
-python -m venv .venv && .venv\Scripts\activate     # Windows
-pip install -e .                                    # core deps (any Python 3.10-3.14)
-# Deep matcher (CPU build — no local CUDA). NOTE: torch has no wheels for
-# Python 3.14 yet — use Python <=3.12 for the loftr/matchanything paths.
-# The classical (SIFT) path works on any version. If torch/kornia are missing,
-# a --method loftr run now fails fast with a clear message (not "0 inliers").
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
-pip install kornia
-# Google Earth Engine (optional, primary source per brief): pip install earthengine-api && earthengine authenticate
-```
+## 6. Documentation
 
-## Quickstart
-```bash
-# 1) Inspect the video / extract frames
-python scripts/01_extract_frames.py --probe
-python scripts/01_extract_frames.py --every 2.0 --max 30
-
-# 2) Fetch a georeferenced satellite tile (esri = keyless default; pnoa = best res here)
-python scripts/02_fetch_reference.py --provider pnoa --span 500 --pixels 2048
-
-# 3) Localize a single frame (the MVP) — prints lat/lon/yaw, saves overlays
-python scripts/03_localize_frame.py --frame data/frames/<one>.jpg --method classical
-
-# 4) Run across the video → trajectory CSV + map plot
-python scripts/04_run_video.py --every 2.0 --method classical
-
-# 5) Sharded, resumable ingestion of the whole video (manifest + integrity verify)
-python scripts/05_ingest_video.py            # re-run resumes; --verify checks integrity
-
-# 6) Extract the per-frame GPS track (GROUND TRUTH for scoring only; needs exiftool)
-python scripts/06_extract_gps_track.py
-
-# 7) Validate N frames against the GPS track → error distribution + CSV
-python scripts/07_validate.py --frames 342,3083,6510 --method loftr --provider pnoa
-
-# 8) Full-trajectory VO dead-reckoning anchored on locked frames → drift curve CSV
-python scripts/08_vo_trajectory.py --provider pnoa --anchors 6400,6500,6600
-```
-
-Run tests: `pytest` (all offline — synthetic videos, mocked network; no torch needed).
-
-## Design notes
-- **Reference source is pluggable.** The brief names Google Earth; Adrian sanctioned
-  open satellite APIs as a fallback. `provider: esri` (keyless, global) works out of
-  the box; `pnoa` (Spanish IGN orthophoto) is the highest-resolution source over the
-  true flight area (Asturias) — both give exact pixel↔lat/lon.
-- **Matcher is pluggable** so we can satisfy the brief's "compare ≥2 approaches"
-  (SIFT vs LoFTR) by changing `--method`.
-- **Frames are independent** (per the brief). Temporal smoothing / VO is a later
-  extension wired through the same pose output.
-
-## Docs
-- **Numbers, results, what's next** → [`STATUS.md`](STATUS.md) — the single source of truth.
-- **How it works (long-form walkthrough)** → [`explained-dronomy.md`](explained-dronomy.md).
-- **Repo & code structure** → [`STRUCTURE.md`](STRUCTURE.md).
-- **Run RoMA on a local GPU** → [`docs/LOCAL_GPU_MATCHANYTHING.md`](docs/LOCAL_GPU_MATCHANYTHING.md).
-- **Run RoMA on a cloud GPU pod** → [`docker/RUNPOD.md`](docker/RUNPOD.md).
-- **Contributing / conventions** → [`CONTRIBUTING.md`](CONTRIBUTING.md).
+* [`STATUS.md`](STATUS.md): the single source of truth for all numbers and status.
+* [`explained-dronomy.md`](explained-dronomy.md): the long form walkthrough of what, why, and how.
+* [`STRUCTURE.md`](STRUCTURE.md): the repository and code structure.
+* [`docs/LOCAL_GPU_MATCHANYTHING.md`](docs/LOCAL_GPU_MATCHANYTHING.md): running RoMA on a local CUDA GPU.
+* [`docker/RUNPOD.md`](docker/RUNPOD.md): running RoMA on a cloud GPU pod.
+* [`CONTRIBUTING.md`](CONTRIBUTING.md): conventions and contribution rules.

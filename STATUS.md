@@ -63,7 +63,7 @@ export · multi-dataset adapters (provided video + UAV-VisLoc).
   **~7.4 m median = blind** whole-video localization. Don't present 1.5 m as blind.
 
 ## 5. What CHANGED since the 23 June draft (fix these)
-1. **Tests: 79 → 149.**
+1. **Tests: 79 → 156.**
 2. New methods now exist (draft called them future): multi-source selection,
    fusion filter, manual anchoring, margin gate, tilt correction, coarse-to-fine.
 3. **Margin gate = done**, not "next step."

@@ -3,9 +3,10 @@
 > 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
 
 
-This is the long-form walkthrough of the `diego` branch: every stage of the
-pipeline, the reasoning behind each decision, the math underneath, and the
-measured results. Written so you can defend any piece of it in a review.
+This is the long-form walkthrough of the pipeline: every stage, the reasoning
+behind each decision, and the math underneath. Written so you can defend any
+piece of it in a review. **All numbers live in [`STATUS.md`](STATUS.md)** — this
+doc explains the *how* and *why*, not the figures.
 
 ---
 
@@ -293,8 +294,7 @@ telemetry-free.)
 ## 8. Step 6 — Measurement: harness, bench, and honest numbers
 
 `src/dronomy_loc/localize/validate.py` · `scripts/07_validate.py` ·
-`src/dronomy_loc/data/telemetry.py` · `scripts/06_extract_gps_track.py` ·
-`ACCURACY_LOG.md`
+`src/dronomy_loc/data/telemetry.py` · `scripts/06_extract_gps_track.py`
 
 ### 8.1 Ground-truth extraction
 
@@ -327,149 +327,50 @@ bench, otherwise comparability dies.
 
 ---
 
-## 9. Measured results (all on CPU, PNOA source, real video)
+## 9. Measured results
 
-### 9.1 The three-frame bench
+All current, canonical numbers — the bench, the blind full-video result,
+LoFTR/RoMA accuracy, coverage, the VO shape error, and the test count — live in
+**[`STATUS.md`](STATUS.md)**, the single source of truth. Earlier run-specific
+figures were removed from this walkthrough on purpose, so there is exactly one
+place to read numbers. For the local-GPU RoMA setup behind the cascade numbers,
+see [`docs/LOCAL_GPU_MATCHANYTHING.md`](docs/LOCAL_GPU_MATCHANYTHING.md).
 
-| Config | 342 | 3083 | 6510 | Mean | Teammate's |
-|---|---|---|---|---|---|
-| SIFT, his grid | 20.0 m (39 inl) | no pose | 90.7 m (133 inl ⚠ false confidence) | **55.3 m** | 56.8 m ✓ |
-| LoFTR, his grid | 106.7 m (15 inl → unlocked) | 94.7 m (15 inl → unlocked) | **1.76 m (117 inl, LOCKED)** | **67.7 m** | 70.0 m ✓ |
-| LoFTR, single-scale 70 m (ours) | no pose | no pose | **1.75 m (35 inl, LOCKED)** | locked-only 1.75 m | — (1.8× faster) |
+The qualitative lessons behind those numbers are the point of this walkthrough,
+and they still hold:
 
-Reading it:
-- Reproducing his numbers within noise **validates the entire pipeline** —
-  ingest, geo math, providers, search, scoring — end to end on real data.
-- The SIFT 6510 row is the cautionary tale: 133 inliers *and* 90 m wrong.
-  Inlier count from SIFT on repetitive structure is not confidence.
-- The LoFTR 6510 row is the proof of concept: **metre-level absolute
-  localization from video alone**, where the scene allows it.
-- The "ours" row shows the telemetry-informed simplification costs nothing
-  and runs 1.8× faster (153 s vs 278 s per frame).
+- **SIFT inlier count is not confidence.** On repetitive structure SIFT locks
+  confidently onto the *wrong* tile — the relative-margin lock gate exists for
+  exactly this failure mode.
+- **LoFTR gives metre-level absolute localization from video alone** where the
+  scene has texture. Coverage is limited by the **appearance gap** (feature-poor
+  vegetation, off-season reference imagery), not by camera tilt — the telemetry
+  decode shows the gimbal is nadir the whole flight.
+- **VO dead-reckoning** chains consecutive-frame homographies out from locked
+  anchors to cover the long unmatchable stretches; error grows with
+  hops-from-anchor, so every extra anchor flattens the drift curve.
+- **RoMA** (cross-modality, dense) is the lever on the appearance gap: it refines
+  the sparse matchers' locks to a few metres and recovers frames they miss.
 
-### 9.2 Why most frames don't lock (and what we did about it)
+## 10. Engineering discipline (the part that doesn't show in demos)
 
-Only a small fraction of this flight matches the orthophoto directly — the
-teammate measured ~6% (a segment near the flight's end, frames ~6400–6600).
-His explanation (tilted camera) is disproven by our telemetry decode; the
-true cause is **appearance**: feature-poor vegetation photographed in a
-different season than the reference. You cannot match texture that isn't
-there — so instead of fighting it, we route around it:
-
----
-
-## 10. Step 7 — VO dead-reckoning: coverage beyond the matchable segment
-
-`src/dronomy_loc/localize/odometry.py` · `scripts/08_vo_trajectory.py`
-
-### 10.1 The idea
-
-Consecutive video frames overlap enormously (at 3 fps and ~1 m/s, ~99%
-overlap) and *always* match each other — same sensor, same second, same
-lighting. Over near-planar ground with a nadir camera, the motion between
-consecutive frames k−1 and k is a homography H₍k−1→k₎.
-
-If some frame *a* (an **anchor**) also has a verified absolute registration
-H₍a→ref₎ to the satellite tile (a locked grid-search match), then ANY frame k
-can be georeferenced by composing along the chain:
-
-```
-H(k→ref) = H(a→ref) · H(a−1→a)⁻¹ · … · H(k→k+1)⁻¹      (chain k → a → tile)
-```
-
-and the standard pose extraction (Section 6) applies unchanged. After every
-multiply we renormalize H by H[2,2] so numbers stay conditioned over long
-chains.
-
-### 10.2 Drift, breaks, and anchors
-
-- **Drift**: each pairwise homography has sub-pixel error; composing N of
-  them accumulates error roughly with chain length. So the deliverable is an
-  **error-vs-hops-from-anchor curve**, not a flat accuracy claim.
-- **Breaks**: a frame that matches neither neighbour (e.g. pure blur) splits
-  the chain; frames beyond it are unreachable from that side's anchor and are
-  *omitted* (honesty again — no estimate rather than a fabricated one).
-- **Anchors reset drift**: every additional locked frame becomes an anchor;
-  each frame chains to its *nearest* anchor by hop count. More matchable
-  moments ⇒ flatter error curve.
-- Note the distinction from the teammate's "fusion is not viable" verdict:
-  that referred to *triangulating between multiple independent fixes* (true,
-  there's only one matchable segment). Odometry chaining needs only ONE
-  anchor — different mechanism, different feasibility.
-
-### 10.3 The real-data run
-
-Anchors: grid-search LoFTR locks at keyframes in the matchable segment
-(telemetry-free — prior is the filename coordinate). Sweep: every 10th frame
-(686 frames at ~3 fps), SIFT pairwise links (consecutive frames are easy —
-SIFT is fine and fast here), then chain and score every swept frame against
-the GPS track.
-
-**Measured results (2026-06-10, real video, all telemetry-free):**
-
-- All three anchor keyframes locked: 6400 at 2.54 m, 6500 at 1.70 m,
-  6600 at 1.59 m (33–57 inliers each).
-- The chain held across the **entire flight**: 685/685 links, zero breaks.
-- **Coverage: 686/686 swept frames = 100%** — against the ~6% ceiling of
-  per-frame matching.
-- Full-trajectory error vs all GPS fixes: **median 12.3 m, RMSE 35.7 m,
-  worst 70.2 m**.
-- The drift curve behaves exactly as theory predicts: median **1.6 m**
-  within 10 hops of an anchor, 4.2 m at 11–50 hops, 30.3 m beyond (the far
-  end of the flight is ~640 hops from the nearest anchor, since all three
-  anchors sit in the final matchable segment). Every additional anchor
-  flattens that tail.
-- Honest caveats: this flight is slow (~1 m/s) and the scene static, which
-  flatters VO; and the GT itself is consumer GPS (±1–3 m). The
-  error-vs-hops curve in `data/outputs/vo_trajectory.csv` is the honest
-  deliverable, not the headline mean.
-
----
-
-## 11. Engineering discipline (the part that doesn't show in demos)
-
-- **Every module has offline tests** (56 passing): synthetic videos generated
-  with `cv2.VideoWriter`, a synthetic textured "world" with exact known
-  geometry for search/VO tests (ground truth by construction — the search
-  test recovers a planted frame to 0.009 m), network mocked at the module
-  boundary, exiftool mocked at the subprocess boundary. `pytest` runs in ~30 s
-  with no GPU, no network, no video — so it actually gets run.
-- **Adversarial review before pushing.** Independent reviewers hunted the new
-  code; each non-minor claim was then *re-verified by a separate skeptic with
-  a repro*. Three confirmed real bugs got fixed + regression-tested:
-  1. resume with a constant `--max` cap made zero progress (livelock);
-  2. `frames.csv` could be lost forever in a crash window after completion;
-  3. the 1.379× mercator/ground scale error (Section 4.1).
-- **Determinism**: sampling replay, tie-breaks, cache keys, test seeds — all
+- **Every module has offline tests** (current count in `STATUS.md`): synthetic
+  videos generated with `cv2.VideoWriter`, a synthetic textured "world" with
+  ground truth by construction (the search test recovers a planted frame to a few
+  millimetres), network mocked at the module boundary, exiftool mocked at the
+  subprocess boundary. `pytest` runs in ~30 s with no GPU, no network, no video —
+  so it actually gets run.
+- **Adversarial review before pushing**: independent reviewers hunt the new code
+  and each non-minor claim is re-verified by a separate skeptic with a repro.
+- **Determinism**: sampling replay, tie-breaks, cache keys and test seeds are all
   fixed, so two runs of anything agree.
-- **Git hygiene**: the 3.76 GB video, frames, tiles, tracks and outputs are
-  all gitignored; the repo holds only code, config, docs and tests. GitHub is
-  source of truth for code, never data.
-- **ASCII-only runtime output** (Windows consoles mangle em-dashes under
-  cp850/cp1252 — observed live, then swept from every print).
+- **Git hygiene**: the multi-GB video, frames, tiles, tracks and outputs are all
+  gitignored; the repo holds only code, config, docs and tests.
+- **ASCII-only runtime output** (Windows consoles mangle non-ASCII under
+  cp850/cp1252).
 
----
+## 11. Current state & what's next
 
-## 12. Current state & what's next
-
-**Done and measured**: ingest (8 shards / 229 verified frames), ground truth
-(6,853 fixes), four imagery providers (two keyless verified live), grid
-search with lock gate, three-frame bench reproducing the teammate's numbers,
-metre-level locks on the matchable segment, VO modules tested, full-trajectory
-VO run.
-
-**Next**:
-1. **Densify anchors** in/around frames 6300–6700 (the more locks, the
-   flatter the VO drift curve) and extend the swept range.
-2. **Appearance-gap experiments** (the 6%-coverage attack): PNOA acquisition
-   date selection, CLAHE/gradient pre-normalization, cross-modal matchers
-   (MatchAnything; the teammate has a Docker image to reuse).
-3. **35-stop matchability scan** with our pipeline to confirm the coverage
-   map frame-by-frame against his.
-4. **Report**: framing already settled by the data — "metre-level where the
-   scene permits; VO-chained, drift-bounded estimates elsewhere; coverage is
-   an appearance problem, quantified."
-5. **Professor decisions pending**: telemetry purity for engineering priors
-   (we self-calibrate regardless), grading scope on coverage, which number is
-   the graded number. (Note: GT itself is consumer GPS, ±1–3 m — sub-metre
-   claims are unprovable against it.)
+See **[`STATUS.md`](STATUS.md)** for the current state, the headline numbers, and
+the "what's next" notes. This section used to duplicate status and drifted out of
+date — it now points at the single source of truth instead.

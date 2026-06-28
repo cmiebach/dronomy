@@ -10,7 +10,7 @@ A telemetry free, modular framework that localizes a drone from its downward cam
 | Capability | Result | How measured |
 |---|---|---|
 | **RoMA blind whole video pipeline (headline)** | **median 7.4 m, 55 percent within 15 m, 28 of 28 anchors, fully GPS free** | real, whole video, mean 76 m because a few anchors lock the wrong tile, the median is robust |
-| SIFT baseline | frame 6510 at 90.7 m, about 133 inliers, degenerate, confident yet wrong on repetitive texture | real |
+| SIFT baseline | frame 6510 at 90.7 m, about 136 inliers, degenerate, confident yet wrong on repetitive texture | real |
 | LoFTR | 1.76 to 1.80 m where it locks, about 15 percent blind coverage, oblique frames fail | real |
 | RoMA precision, given a roughly correct tile | 10 of 10 frames, median 1.5 m, best 0.7 m, worst 2.3 m, 45 to 310 times the LoFTR inliers | real GPU bench, precision given a good prior, not a blind search |
 | Visual odometry trajectory | 100 percent coverage, 686 of 686 frames, zero chain breaks. Drift dominated: raw trajectory error 165 m, shape aligned RMSE 137 m, length ratio 3.1 (over scaled). A coverage layer, not an accuracy layer, absolute accuracy comes from RoMA | real, GPS free |

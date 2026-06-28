@@ -35,7 +35,7 @@ source per frame**. One command runs the whole pipeline end-to-end.
 | RoMA per-frame coverage / precision | **100 % matched (10/10); ~1.5 m** given the right tile | real GPU bench — *that 1.5 m is precision given a good prior, NOT blind* |
 | RoMA cascade (**local CUDA, RTX 3080 Ti**) | refine **4/4 < 5 m, median ~2.0 m**; recovery lifts blind recall@5m **0.15 → 0.35** | real, local GPU end-to-end cascade |
 | RoMA tile disambiguation | correct tile wins **6/6** (1.8–10.8×) | real |
-| VO flight path (shape) | **~24 m shape-aligned RMSE**, 457 frames, continuous | real, GPS-free (clean figure: `docs/figures/flight_path_vs_gt.png`) |
+| VO flight path (shape) | **137 m shape-aligned RMSE, path-length ratio 3.11**, 686 frames, continuous | real, GPS-free — VO over-scales ~3×; absolute re-anchoring bounds error (data: `data/outputs/vo_trajectory.csv`) |
 | Cross-dataset generality (UAV-VisLoc) | **11.3 m** on an external-dataset frame | real |
 | Trajectory (VO) | **0.6–2.6 m near absolute fixes**; drifts over long unanchored gaps | real |
 | Engineering | **156 offline tests, CI green** (Python 3.11 + 3.12) | — |
@@ -67,7 +67,7 @@ export · multi-dataset adapters (provided video + UAV-VisLoc).
 2. New methods now exist (draft called them future): multi-source selection,
    fusion filter, manual anchoring, margin gate, tilt correction, coarse-to-fine.
 3. **Margin gate = done**, not "next step."
-4. Generalization now has **real evidence** (UAV-VisLoc 11.3 m) — soften "not demonstrated."
+4. **Generalization = one UAV-VisLoc frame (11.3 m), a single-frame proof of concept.** Do NOT claim broad cross-terrain generalization; keep "not yet demonstrated."
 5. Imagery: we use **PNOA (~0.15–0.25 m/px), higher-res than Esri**, and now
    **select per frame** across sources.
 

@@ -9,10 +9,29 @@ import is deferred so the rest of the package works without them.
 """
 from __future__ import annotations
 
+import os
+
 import cv2
 import numpy as np
 
 from .base import Matcher, MatchResult, estimate_homography
+
+
+def _ensure_ca_bundle() -> None:
+    """kornia downloads the LoFTR weights via torch.hub (urllib over TLS). On
+    some systems — notably a fresh Windows Python — ssl can't locate a CA bundle
+    and the download dies with CERTIFICATE_VERIFY_FAILED. Point it at certifi's
+    bundle (a transitive dep of requests, always present) unless the user has
+    already set one. ssl reads SSL_CERT_FILE when the request builds its context,
+    so setting it here, before the first download, is enough."""
+    if os.environ.get("SSL_CERT_FILE"):
+        return
+    try:
+        import certifi
+    except ImportError:  # pragma: no cover
+        return
+    os.environ["SSL_CERT_FILE"] = certifi.where()
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", certifi.where())
 
 
 class DeepMatcher(Matcher):
@@ -42,6 +61,7 @@ class DeepMatcher(Matcher):
                 "  pip install kornia"
             ) from e
         self._torch = torch
+        _ensure_ca_bundle()  # so torch.hub can fetch the LoFTR weights over TLS
         self._model = K.feature.LoFTR(pretrained=self.weights).to(self.device).eval()
 
     def _prep(self, img: np.ndarray):

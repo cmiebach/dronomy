@@ -7,7 +7,7 @@ error-vs-hops-from-anchor curve scored against the GPS ground-truth track
 (GT is scoring only, never an input).
 
 Usage:
-    python scripts/08_vo_trajectory.py --provider pnoa --anchors 6400,6500,6600
+    python scripts/08_vo_trajectory.py --provider pnoa --anchors 4040,6500
     python scripts/08_vo_trajectory.py --stride 30 --method loftr
 """
 import argparse
@@ -40,7 +40,7 @@ def main():
                     choices=["esri", "pnoa", "gee", "ign"])
     ap.add_argument("--method", default="loftr", choices=["classical", "loftr"],
                     help="matcher for the ANCHOR search (VO links always use SIFT)")
-    ap.add_argument("--anchors", default="6400,6500,6600",
+    ap.add_argument("--anchors", default="4040,6500",
                     help="candidate anchor keyframes (must lie on the stride grid)")
     ap.add_argument("--stride", type=int, default=10,
                     help="sweep every Nth frame (10 = 3 fps, ~0.3 m of motion)")

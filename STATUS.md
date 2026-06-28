@@ -1,6 +1,6 @@
 # Project status — for the report / poster / presentation team
 
-**Last updated: 2026-06-27** · Single source of truth for numbers + framework state.
+**Last updated: 2026-06-28** · Single source of truth for numbers + framework state.
 Use the numbers in this file. If a figure isn't here, ask before putting it on the poster.
 
 > **RoMA note:** RoMA runs **natively on the Apple-Silicon GPU (MPS)** — no Docker
@@ -9,6 +9,10 @@ Use the numbers in this file. If a figure isn't here, ask before putting it on t
 > 76 m — a few anchors lock the wrong tile confidently; the median is robust). Two
 > distinct RoMA numbers, don't conflate them: **~1.5 m is *precision* given the right
 > tile**; **~7.4 m (median) is the *blind* whole-video result.**
+> RoMA also now runs **locally on a CUDA GPU** (RTX 3080 Ti, no Docker/cloud; setup:
+> `docs/LOCAL_GPU_MATCHANYTHING.md`). In the **cascade** it refines LoFTR's locks to
+> **median ~2.0 m (4/4 < 5 m**, one frame LoFTR had at 16.5 m → 1.3 m) and recovers
+> frames LoFTR missed at sub-metre, lifting blind recall@5m **0.15 → 0.35**.
 
 ---
 
@@ -29,11 +33,12 @@ source per frame**. One command runs the whole pipeline end-to-end.
 | Coverage (LoFTR, blind grid over flight) | ~15 % of frames lock | real, 40-frame scan |
 | **Multi-source selection (PNOA+Esri)** | **100 % coverage on feature-rich frames; one frame 19 m → 5 m** | real, per-frame best-source |
 | RoMA per-frame coverage / precision | **100 % matched (10/10); ~1.5 m** given the right tile | real GPU bench — *that 1.5 m is precision given a good prior, NOT blind* |
+| RoMA cascade (**local CUDA, RTX 3080 Ti**) | refine **4/4 < 5 m, median ~2.0 m**; recovery lifts blind recall@5m **0.15 → 0.35** | real, local GPU end-to-end cascade |
 | RoMA tile disambiguation | correct tile wins **6/6** (1.8–10.8×) | real |
 | VO flight path (shape) | **~24 m shape-aligned RMSE**, 457 frames, continuous | real, GPS-free (clean figure: `docs/figures/flight_path_vs_gt.png`) |
 | Cross-dataset generality (UAV-VisLoc) | **11.3 m** on an external-dataset frame | real |
 | Trajectory (VO) | **0.6–2.6 m near absolute fixes**; drifts over long unanchored gaps | real |
-| Engineering | **149 offline tests, CI green** (Python 3.11 + 3.12) | — |
+| Engineering | **156 offline tests, CI green** (Python 3.11 + 3.12) | — |
 | Partner benchmark | "~10 m across videos = amazing" — we beat it on matchable frames | context |
 
 ## 3. Methods in the system (list these on the poster)

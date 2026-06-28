@@ -12,3 +12,13 @@ Suggested notebooks:
 
 Run with the repo root as CWD so `config.yaml` and `data/` resolve, or
 `import sys; sys.path.insert(0, "src")` to import `dronomy_loc`.
+
+## Running `framework_demo.ipynb`
+Needs the notebook extras (table + inline image + a kernel):
+```bash
+pip install -e ".[notebook,deep]"          # pandas + jupyter + (LoFTR) torch
+jupyter notebook framework_demo.ipynb
+# or headless: python -m nbconvert --to notebook --execute framework_demo.ipynb
+```
+Verified end-to-end (SIFT, 6 frames) → metrics table, comparison figure,
+GeoJSON/KML export, GT-vs-estimate overlay.

@@ -31,6 +31,8 @@ deep = ["torch", "torchvision", "kornia"]
 gee = ["earthengine-api", "geemap"]
 # Test tooling.
 dev = ["pytest>=8"]
+# Demo notebook (notebooks/framework_demo.ipynb): table + inline image + execution.
+notebook = ["jupyter", "nbconvert", "pandas", "ipython"]
 # NOTE: the real MatchAnything backend (matching/matchanything.py) needs zju3dv's
 # fork of `imcui` plus the MatchAnything weights. That fork is not on PyPI and is
 # heavy/CPU-pinned, so it is NOT a hard dependency here — it lives only in the

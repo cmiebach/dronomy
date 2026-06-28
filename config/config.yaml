@@ -4,6 +4,11 @@
 # ── Input video ───────────────────────────────────────────────────────
 video:
   path: "dronomy_video/IE_Challenge_lat43_521955_lon5_624290.MP4"
+  # Off-repo source for the ~3.7 GB flight video. `scripts/00_fetch_video.py`
+  # (step 0 of scripts/run_e2e.py) downloads it here, resumable + size-verified,
+  # so a fresh clone can run end-to-end. source_bytes is the integrity check.
+  source_url: "https://www.dropbox.com/scl/fi/wxrcfpd09c3yvrcckq85p/IE_Challenge_lat43_521955_lon5_624290.MP4?rlkey=lstvv32onztgu3osvaw6ymcbt&dl=1"
+  source_bytes: 3761828779
   # Rough recording location parsed from the filename (lat, lon). Used as the
   # localization prior and to centre the reference-imagery fetch.
   rough_lat: 43.521955

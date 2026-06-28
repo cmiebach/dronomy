@@ -25,6 +25,9 @@ data/*.csv
 *.tif
 *.tiff
 
+# ── Provisioned external tools (portable exiftool fetched by scripts/_ensure_tools) ─
+tools/
+
 # ── Python ────────────────────────────────────────────────────────────
 .pytest_cache/
 __pycache__/

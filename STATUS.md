@@ -13,7 +13,7 @@ A telemetry free, modular framework that localizes a drone from its downward cam
 | SIFT baseline | frame 6510 at 90.7 m, about 136 inliers, degenerate, confident yet wrong on repetitive texture | real |
 | LoFTR | 1.76 to 1.80 m where it locks, about 15 percent blind coverage, oblique frames fail | real |
 | RoMA precision, given a roughly correct tile | 10 of 10 frames, median 1.5 m, best 0.7 m, worst 2.3 m, 45 to 310 times the LoFTR inliers | real GPU bench, precision given a good prior, not a blind search |
-| Visual odometry trajectory | 100 percent coverage, 686 of 686 frames, raw median 12.3 m, shape aligned RMSE 27.6 m, path ratio 0.91 | real, GPS free, path shape and size correct, residual is drift |
+| Visual odometry trajectory | 100 percent coverage, 686 of 686 frames, zero chain breaks. Drift dominated: raw trajectory error 165 m, shape aligned RMSE 137 m, length ratio 3.1 (over scaled). A coverage layer, not an accuracy layer, absolute accuracy comes from RoMA | real, GPS free |
 | Multi source selection (PNOA and Esri) | 100 percent coverage on feature rich frames, one frame from 19 m to 5 m | real, per frame best source |
 | Cross dataset (UAV VisLoc) | region 03 frame at 11.3 m with LoFTR, single frame proof of concept | real, one external dataset frame |
 | Partner benchmark | about 10 m across videos described as amazing, we reach about 1.8 m best on matchable frames | context |

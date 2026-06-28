@@ -13,7 +13,7 @@ dronomy/                              # git repo root
 ├── README.md                         # usage / APIs (committed)
 ├── STRUCTURE.md                      # this file (committed)
 ├── CONTRIBUTING.md                   # contribution rules (committed)
-├── PLAN.md / PROJECT_GUIDE.md / ACCURACY_LOG.md   # process docs (committed)
+├── STATUS.md                         # single source of truth: numbers + status (committed)
 ├── .env.example                      # template for keys/paths; real .env is gitignored
 ├── .gitignore / .dockerignore
 ├── config/
@@ -128,8 +128,8 @@ selects a backend by name from config.
 
 - **Committed:** `src/dronomy_loc/**`, `scripts/**`, `tests/**`, `docker/**`,
   `config/config.yaml`, `pyproject.toml`, `requirements.txt`, the Markdown docs
-  (`README.md`, `STRUCTURE.md`, `CONTRIBUTING.md`, `PLAN.md`, `PROJECT_GUIDE.md`,
-  `ACCURACY_LOG.md`, `docs/**`), `.env.example`, `.gitignore`, `.dockerignore`.
+  (`README.md`, `STRUCTURE.md`, `CONTRIBUTING.md`, `STATUS.md`, `docs/**`),
+  `.env.example`, `.gitignore`, `.dockerignore`.
 - **Never committed (gitignored):** the drone video (`dronomy_video/`, `*.MP4`),
   generated data (`data/frames/`, `data/ingest/`, `data/reference/`,
   `data/outputs/`, `data/cache/`, `data/*.csv`, `data/*.json`), `*.tif`, the

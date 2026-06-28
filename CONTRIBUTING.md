@@ -4,8 +4,7 @@
 
 **Everything in this repository is written in English** — source code, comments,
 docstrings, commit messages, pull-request descriptions, and all documentation
-(`README.md`, `STRUCTURE.md`, `PLAN.md`, `PROJECT_GUIDE.md`, `ACCURACY_LOG.md`,
-etc.). The team's working language is English; please keep all committed content
+(`README.md`, `STRUCTURE.md`, `STATUS.md`, etc.). The team's working language is English; please keep all committed content
 English-only. Anything printed at runtime (console output, log messages) must be
 plain ASCII — em-dashes and other non-ASCII characters mangle on Windows consoles.
 

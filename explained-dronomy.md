@@ -1,5 +1,8 @@
 # Dronomy, explained — what we built, why, and how it works
 
+> 📊 **Canonical numbers: see [`STATUS.md`](STATUS.md).** Figures in this file may be from earlier runs and are kept for history.
+
+
 This is the long-form walkthrough of the `diego` branch: every stage of the
 pipeline, the reasoning behind each decision, the math underneath, and the
 measured results. Written so you can defend any piece of it in a review.

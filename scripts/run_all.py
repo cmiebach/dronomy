@@ -187,26 +187,26 @@ def main():
     _flightpath_png(auto_rows, out / "flightpath.png")
 
     # --- RESULTS.md ---
-    L = ["# End-to-end run — all methods (single trigger)", "",
-         f"Frames: {len(indices)} · methods run: {', '.join(summaries)} · device: {args.device}", "",
+    L = ["# End to end run, all methods (single trigger)", "",
+         f"Frames: {len(indices)} | methods run: {', '.join(summaries)} | device: {args.device}", "",
          "| Method | Coverage | recall@5m | median err | mean err |",
          "|---|---|---|---|---|"]
     for name, fm in per_model.items():
-        med = f"{fm.median_err_m:.1f} m" if fm.median_err_m is not None else "—"
-        mean = f"{fm.mean_err_m:.1f} m" if fm.mean_err_m is not None else "—"
+        med = f"{fm.median_err_m:.1f} m" if fm.median_err_m is not None else "n/a"
+        mean = f"{fm.mean_err_m:.1f} m" if fm.mean_err_m is not None else "n/a"
         L.append(f"| {name} | {fm.lock_rate*100:.0f}% | {fm.recall_5m:.2f} | {med} | {mean} |")
     L += ["", f"**Framework pick (recall@5m): `{best}`**", "",
-          f"**Auto-selected (best-confidence per frame): coverage "
+          f"**Auto selected (best confidence per frame): coverage "
           f"{auto_summary.lock_rate*100:.0f}%, median err "
           f"{auto_summary.median_err_m:.1f} m**" if auto_summary.median_err_m is not None else "",
-          f"Per-frame winners: " + ", ".join(f"{k} {v}" for k, v in sorted(winners.items())),
+          f"Per frame winners: " + ", ".join(f"{k} {v}" for k, v in sorted(winners.items())),
           "", "Outputs: val_<method>.csv, auto_track.csv, track.geojson/.kml, "
           "comparison.png, flightpath.png"]
     missing = set(m.strip() for m in args.methods.split(",")) - set(summaries)
     if missing:
         L += ["", f"_Methods unavailable in this environment: {', '.join(sorted(missing))} "
               "(need the MatchAnything Docker image / GPU pod for RoMA)._"]
-    (out / "RESULTS.md").write_text("\n".join(L) + "\n")
+    (out / "RESULTS.md").write_text("\n".join(L) + "\n", encoding="utf-8")
     print("\n".join(L))
     print(f"\nAll outputs in {out}/")
 

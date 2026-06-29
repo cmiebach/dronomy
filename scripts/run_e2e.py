@@ -41,7 +41,7 @@ def _hr(title):
 
 
 def step_fetch(cfg, args):
-    _hr("STEP 0/4 — fetch video (data ingestion)")
+    _hr("STEP 0/4: fetch video (data ingestion)")
     url = args.url or getattr(cfg.video, "source_url", None)
     dest = resolve(cfg.video.path)
     if not url:
@@ -55,7 +55,7 @@ def step_fetch(cfg, args):
 
 
 def step_ingest(cfg, args):
-    _hr("STEP 1/4 — ingest + shard")
+    _hr("STEP 1/4: ingest and shard")
     video = resolve(cfg.video.path)
     out = resolve(getattr(cfg.frames, "ingest_dir", "data/ingest"))
     res = ingest.ingest_video(
@@ -73,21 +73,21 @@ def step_ingest(cfg, args):
 
 
 def step_gps(cfg, args):
-    _hr("STEP 2/4 — extract GPS ground-truth track")
+    _hr("STEP 2/4: extract GPS ground truth track")
     from _ensure_tools import ensure_exiftool
     exe = ensure_exiftool(resolve("tools"))
     video = resolve(cfg.video.path)
     out = resolve(getattr(cfg.video, "gps_track_csv", "data/gps_track.csv"))
     fixes = extract_gps_track(video, out_csv=out, exiftool=exe)
     if not fixes:
-        sys.exit("no GPS fixes decoded — cannot score without ground truth")
+        sys.exit("no GPS fixes decoded, cannot score without ground truth")
     print(f"extracted {len(fixes)} GPS fixes -> {out}")
     print(f"  first frame {fixes[0].frame} ({fixes[0].lat:.6f}, {fixes[0].lon:.6f}) "
           f"| last frame {fixes[-1].frame} ({fixes[-1].lat:.6f}, {fixes[-1].lon:.6f})")
 
 
 def step_reference(cfg, args):
-    _hr("STEP 3/4 — fetch reference world tiles")
+    _hr("STEP 3/4: fetch reference world tiles")
     ref_dir = resolve(cfg.reference.out_dir)
     span = getattr(cfg.reference, "world_span_m", 600.0)
     pix = getattr(cfg.reference, "world_pixels", 4096)
@@ -110,13 +110,13 @@ def step_reference(cfg, args):
         except Exception as e:
             print(f"  {prov}: UNAVAILABLE ({type(e).__name__}: {str(e)[:120]})")
     if not ok:
-        sys.exit("no reference provider succeeded — cannot localize")
+        sys.exit("no reference provider succeeded, cannot localize")
     args._providers_ok = ",".join(ok)
     print(f"providers ready: {args._providers_ok}")
 
 
 def step_localize(cfg, args):
-    _hr("STEP 4/4 — localize (run_all: every matcher, auto-select, export)")
+    _hr("STEP 4/4: localize (run_all: every matcher, auto select, export)")
     providers = getattr(args, "_providers_ok", None) or args.providers
     cmd = [sys.executable, str(HERE / "run_all.py"),
            "--providers", providers, "--methods", args.methods,
@@ -157,7 +157,7 @@ def main():
         step_reference(cfg, args)
     if not args.skip_localize:
         step_localize(cfg, args)
-    _hr(f"END-TO-END COMPLETE in {time.perf_counter()-t0:.0f}s — "
+    _hr(f"END TO END COMPLETE in {time.perf_counter()-t0:.0f}s, "
         f"see data/outputs/run_all/RESULTS.md")
 
 

@@ -35,7 +35,7 @@ def _build_api(model: str, device: str):
         from imcui.ui.utils import get_matcher_zoo, load_config
     except ImportError as exc:  # pragma: no cover - exercised only without imcui
         raise ImportError(
-            "MatchAnything needs 'imcui' with zju3dv's MatchAnything weights — "
+            "MatchAnything needs 'imcui' with zju3dv's MatchAnything weights; "
             "use the dedicated env (docker/Dockerfile.matchanything). "
             f"(import error: {exc})"
         ) from exc
